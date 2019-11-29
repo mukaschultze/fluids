@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "renderer",
+    "variable-density"
+]
+
+[profile.dev]
+opt-level = 3
