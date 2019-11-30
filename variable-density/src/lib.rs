@@ -20,6 +20,8 @@
 // }
 
 use std::mem;
+use std::ptr::copy_nonoverlapping;
+use std::ptr::write_bytes;
 
 fn length(x: f64, y: f64) -> f64 {
     f64::sqrt(x * x + y * y)
@@ -282,6 +284,7 @@ impl SolidBody for SolidSphere {
     }
 }
 
+#[derive(Clone)]
 struct FluidQuantity {
     _src: Vec<f64>,
     _dst: Vec<f64>,
@@ -374,6 +377,10 @@ impl FluidQuantity {
         &self._src
     }
 
+    fn src_mut(&mut self) -> &mut Vec<f64> {
+        &mut self._src
+    }
+
     fn cell(&self) -> &Vec<u8> {
         &self._cell
     }
@@ -386,6 +393,10 @@ impl FluidQuantity {
 
     fn at(&self, x: u32, y: u32) -> f64 {
         self._src[(x + y * self._w) as usize]
+    }
+
+    fn at_mut(&mut self, x: u32, y: u32) -> &mut f64 {
+        &mut self._src[(x + y * self._w) as usize]
     }
 
     fn volume(&self, x: u32, y: u32) -> f64 {
@@ -468,24 +479,28 @@ impl FluidQuantity {
         }
     }
 
-    // fn advect(timestep:f64, u:& FluidQuantity, v:&FluidQuantity,      bodies: &Vec<SolidBody>) {
-    //         let idx = 0;
+    fn advect(
+        &mut self,
+        timestep: f64,
+        u: &FluidQuantity,
+        v: &FluidQuantity,
+        bodies: &Vec<Box<SolidBody>>,
+    ) {
+        let mut idx = 0usize;
 
-    //         for iy in 0.._h {
-    //  for ix in 0.._w {
-    //      idx +=1;
-    //     for (int iy = 0, idx = 0; iy < _h; iy++) {
-    //         for (int ix = 0; ix < _w; ix++, idx++) {
-    //             if (_cell[idx] == CELL_FLUID) {
-    //                 double x = ix + _ox;
-    //                 double y = iy + _oy;
-    //                 rungeKutta3(x, y, timestep, u, v);
-    //                 backProject(x, y, bodies);
-    //                 _dst[idx] = cerp(x, y);
-    //             }
-    //         }
-    //     }
-    // }
+        for iy in 0..self._h {
+            for ix in 0..self._w {
+                idx += 1;
+                if (self._cell[idx] == CELL_FLUID) {
+                    let mut x = ix as f64 + self._ox;
+                    let mut y = iy as f64 + self._oy;
+                    self.rungeKutta3(&mut x, &mut y, timestep, u, v);
+                    self.backProject(&mut x, &mut y, bodies);
+                    self._dst[idx] = self.cerp(x, y);
+                }
+            }
+        }
+    }
 
     fn addInflow(&mut self, x0: f64, y0: f64, x1: f64, y1: f64, v: f64) {
         let ix0 = (x0 / self._hx - self._ox) as u32;
@@ -657,416 +672,633 @@ impl FluidQuantity {
     }
 }
 
-// class FluidSolver {
-//     FluidQuantity *_d;
-//     FluidQuantity *_t;
-//     FluidQuantity *_u;
-//     FluidQuantity *_v;
-//     /* Densities at staggered grid locations */
-//     double *_uDensity;
-//     double *_vDensity;
-//     int _w;
-//     int _h;
-//     double _hx;
-//     double _densityAir;
-//     double _densitySoot;
-//     double _diffusion;
-//     double *_r;
-//     double *_p;
-//     double *_z;
-//     double *_s;
-//     double *_precon;
-//     double *_aDiag;
-//     double *_aPlusX;
-//     double *_aPlusY;
-//     double _tAmb;
-//     double _g;
-//     const vector<const SolidBody *> &_bodies;
-//     void buildRhs() {
-//         double scale = 1.0/_hx;
-//         const uint8_t *cell = _d->cell();
-//         const uint8_t *body = _d->body();
-//         for (int y = 0, idx = 0; y < _h; y++) {
-//             for (int x = 0; x < _w; x++, idx++) {
-//                 if (cell[idx] == CELL_FLUID) {
-//                     _r[idx] = -scale*
-//                         (_u->volume(x + 1, y)*_u->at(x + 1, y) - _u->volume(x, y)*_u->at(x, y) +
-//                          _v->volume(x, y + 1)*_v->at(x, y + 1) - _v->volume(x, y)*_v->at(x, y));
-//                     double vol = _d->volume(x, y);
-//                     if (_bodies.empty())
-//                         continue;
-//                     if (x > 0)
-//                         _r[idx] -= (_u->volume(x, y) - vol)*_bodies[body[idx -  1]]->velocityX(x*_hx, (y + 0.5)*_hx);
-//                     if (y > 0)
-//                         _r[idx] -= (_v->volume(x, y) - vol)*_bodies[body[idx - _w]]->velocityY((x + 0.5)*_hx, y*_hx);
-//                     if (x < _w - 1)
-//                         _r[idx] += (_u->volume(x + 1, y) - vol)*_bodies[body[idx +  1]]->velocityX((x + 1.0)*_hx, (y + 0.5)*_hx);
-//                     if (y < _h - 1)
-//                         _r[idx] += (_v->volume(x, y + 1) - vol)*_bodies[body[idx + _w]]->velocityY((x + 0.5)*_hx, (y + 1.0)*_hx);
-//                 } else
-//                     _r[idx] = 0.0;
-//             }
-//         }
-//     }
-//     /* Computes densities at the staggered grid locations as a function of
-//      * temperature and smoke concentration.
-//      */
-//     void computeDensities() {
-//         double alpha = (_densitySoot - _densityAir)/_densityAir;
-//         memset(_uDensity, 0, (_w + 1)*_h*sizeof(double));
-//         memset(_vDensity, 0, _w*(_h + 1)*sizeof(double));
-//         for (int y = 0; y < _h; y++) {
-//             for (int x = 0; x < _w; x++) {
-//                 double density = _densityAir*_tAmb/_t->at(x, y)*(1.0 + alpha*_d->at(x, y));
-//                 density = max(density, 0.05*_densityAir); /* Clamp dangerously low densities */
-//                 _uDensity[_u->idx(x, y)]     += 0.5*density;
-//                 _vDensity[_v->idx(x, y)]     += 0.5*density;
-//                 _uDensity[_u->idx(x + 1, y)] += 0.5*density;
-//                 _vDensity[_v->idx(x, y + 1)] += 0.5*density;
-//             }
-//         }
-//     }
-//     /* Instead of constant density per cell, the entries must now be modified
-//      * to account for variable density at individual grid cells.
-//      */
-//     void buildPressureMatrix(double timestep) {
-//         double scale = timestep/(_hx*_hx);
-//         const uint8_t *cell = _d->cell();
-//         memset(_aDiag,  0, _w*_h*sizeof(double));
-//         memset(_aPlusX, 0, _w*_h*sizeof(double));
-//         memset(_aPlusY, 0, _w*_h*sizeof(double));
+struct FluidSolver {
+    _d: FluidQuantity,
+    _t: FluidQuantity,
+    _u: FluidQuantity,
+    _v: FluidQuantity,
+    /* Densities at staggered grid locations */
+    _uDensity: Vec<f64>,
+    _vDensity: Vec<f64>,
+    _w: u32,
+    _h: u32,
+    _hx: f64,
+    _densityAir: f64,
+    _densitySoot: f64,
+    _diffusion: f64,
+    _r: Vec<f64>,
+    _p: Vec<f64>,
+    _z: Vec<f64>,
+    _s: Vec<f64>,
+    _precon: Vec<f64>,
+    _aDiag: Vec<f64>,
+    _aPlusX: Vec<f64>,
+    _aPlusY: Vec<f64>,
+    _tAmb: f64,
+    _g: f64,
+    _bodies: Vec<Box<SolidBody>>,
+}
 
-//         for (int y = 0, idx = 0; y < _h; y++) {
-//             for (int x = 0; x < _w; x++, idx++) {
-//                 if (cell[idx] != CELL_FLUID)
-//                     continue;
-//                 if (x < _w - 1 && cell[idx + 1] == CELL_FLUID) {
-//                     double factor = scale*_u->volume(x + 1, y)/_uDensity[_u->idx(x + 1, y)];
-//                     _aDiag [idx    ] +=  factor;
-//                     _aDiag [idx + 1] +=  factor;
-//                     _aPlusX[idx    ]  = -factor;
-//                 }
-//                 if (y < _h - 1 && cell[idx + _w] == CELL_FLUID) {
-//                     double factor = scale*_v->volume(x, y + 1)/_vDensity[_u->idx(x, y + 1)];
-//                     _aDiag [idx     ] +=  factor;
-//                     _aDiag [idx + _w] +=  factor;
-//                     _aPlusY[idx     ]  = -factor;
-//                 }
-//             }
-//         }
-//     }
-//     void buildHeatDiffusionMatrix(double timestep) {
-//         for (int i = 0; i < _w*_h; i++)
-//             _aDiag[i] = 1.0;
-//         memset(_aPlusX, 0, _w*_h*sizeof(double));
-//         memset(_aPlusY, 0, _w*_h*sizeof(double));
+impl FluidSolver {
+    fn buildRhs(&mut self) {
+        let scale = 1.0 / self._hx;
 
-//         const uint8_t *cell = _d->cell();
-//         double scale = _diffusion*timestep*1.0/(_hx*_hx);
+        let cell = self._d.cell();
+        let body = self._d.body();
 
-//         for (int y = 0, idx = 0; y < _h; y++) {
-//             for (int x = 0; x < _w; x++, idx++) {
-//                 if (cell[idx] != CELL_FLUID)
-//                     continue;
-//                 if (x < _w - 1 && cell[idx + 1] == CELL_FLUID) {
-//                     _aDiag [idx    ] +=  scale;
-//                     _aDiag [idx + 1] +=  scale;
-//                     _aPlusX[idx    ]  = -scale;
-//                 }
+        let mut idx = 0usize;
 
-//                 if (y < _h - 1 && cell[idx + _w] == CELL_FLUID) {
-//                     _aDiag [idx     ] +=  scale;
-//                     _aDiag [idx + _w] +=  scale;
-//                     _aPlusY[idx     ]  = -scale;
-//                 }
-//             }
-//         }
-//     }
-//     void buildPreconditioner() {
-//         const double tau = 0.97;
-//         const double sigma = 0.25;
-//         const uint8_t *cell = _d->cell();
+        for y in 0..self._h {
+            for x in 0..self._w {
+                idx += 1;
 
-//         for (int y = 0, idx = 0; y < _h; y++) {
-//             for (int x = 0; x < _w; x++, idx++) {
-//                 if (cell[idx] != CELL_FLUID)
-//                     continue;
-//                 double e = _aDiag[idx];
+                if (cell[idx] == CELL_FLUID) {
+                    self._r[idx] = -scale
+                        * (self._u.volume(x + 1, y) * self._u.at(x + 1, y)
+                            - self._u.volume(x, y) * self._u.at(x, y)
+                            + self._v.volume(x, y + 1) * self._v.at(x, y + 1)
+                            - self._v.volume(x, y) * self._v.at(x, y));
+                    let vol = self._d.volume(x, y);
+                    if self._bodies.is_empty() {
+                        continue;
+                    }
 
-//                 if (x > 0 && cell[idx - 1] == CELL_FLUID) {
-//                     double px = _aPlusX[idx - 1]*_precon[idx - 1];
-//                     double py = _aPlusY[idx - 1]*_precon[idx - 1];
-//                     e = e - (px*px + tau*px*py);
-//                 }
-//                 if (y > 0 && cell[idx - _w] == CELL_FLUID) {
-//                     double px = _aPlusX[idx - _w]*_precon[idx - _w];
-//                     double py = _aPlusY[idx - _w]*_precon[idx - _w];
-//                     e = e - (py*py + tau*px*py);
-//                 }
+                    if (x > 0) {
+                        self._r[idx] -= (self._u.volume(x, y) - vol)
+                            * self._bodies[body[idx - 1] as usize]
+                                .velocityX(x as f64 * self._hx, (y as f64 + 0.5) * self._hx);
+                    }
+                    if (y > 0) {
+                        self._r[idx] -= (self._v.volume(x, y) - vol)
+                            * self._bodies[body[idx - self._w as usize] as usize]
+                                .velocityY((x as f64 + 0.5) * self._hx, y as f64 * self._hx);
+                    }
+                    if (x < self._w - 1) {
+                        self._r[idx] += (self._u.volume(x + 1, y) - vol)
+                            * self._bodies[body[idx + 1] as usize].velocityX(
+                                (x as f64 + 1.0) * self._hx,
+                                (y as f64 + 0.5) * self._hx,
+                            );
+                    }
+                    if (y < self._h - 1) {
+                        self._r[idx] += (self._v.volume(x, y + 1) - vol)
+                            * self._bodies[body[idx + self._w as usize] as usize].velocityY(
+                                (x as f64 + 0.5) * self._hx,
+                                (y as f64 + 1.0) * self._hx,
+                            );
+                    }
+                } else {
+                    self._r[idx] = 0.0;
+                }
+            }
+        }
+    }
 
-//                 if (e < sigma*_aDiag[idx])
-//                     e = _aDiag[idx];
+    /* Computes densities at the staggered grid locations as a function of
+     * temperature and smoke concentration.
+     */
+    fn computeDensities(&mut self) {
+        let alpha = (self._densitySoot - self._densityAir) / self._densityAir;
 
-//                 _precon[idx] = 1.0/sqrt(e);
-//             }
-//         }
-//     }
-//     void applyPreconditioner(double *dst, double *a) {
-//         const uint8_t *cell = _d->cell();
-//         for (int y = 0, idx = 0; y < _h; y++) {
-//             for (int x = 0; x < _w; x++, idx++) {
-//                 if (cell[idx] != CELL_FLUID)
-//                     continue;
-//                 double t = a[idx];
+        unsafe {
+            write_bytes(
+                self._uDensity.as_mut_ptr(),
+                0,
+                ((self._w + 1) * self._h) as usize,
+            );
+            write_bytes(
+                self._vDensity.as_mut_ptr(),
+                0,
+                (self._w * (self._h + 1)) as usize,
+            );
+        }
 
-//                 if (x > 0 && cell[idx -  1] == CELL_FLUID)
-//                     t -= _aPlusX[idx -  1]*_precon[idx -  1]*dst[idx -  1];
-//                 if (y > 0 && cell[idx - _w] == CELL_FLUID)
-//                     t -= _aPlusY[idx - _w]*_precon[idx - _w]*dst[idx - _w];
+        for y in 0..self._h {
+            for x in 0..self._w {
+                let mut density = self._densityAir * self._tAmb / self._t.at(x, y)
+                    * (1.0 + alpha * self._d.at(x, y));
+                density = f64::max(density, 0.05 * self._densityAir); /* Clamp dangerously low densities */
+                self._uDensity[self._u.idx(x, y) as usize] += 0.5 * density;
+                self._vDensity[self._v.idx(x, y) as usize] += 0.5 * density;
+                self._uDensity[self._u.idx(x + 1, y) as usize] += 0.5 * density;
+                self._vDensity[self._v.idx(x, y + 1) as usize] += 0.5 * density;
+            }
+        }
+    }
 
-//                 dst[idx] = t*_precon[idx];
-//             }
-//         }
+    /* Instead of constant density per cell, the entries must now be modified
+     * to account for variable density at individual grid cells.
+     */
+    fn buildPressureMatrix(&mut self, timestep: f64) {
+        let scale = timestep / (self._hx * self._hx);
+        let cell = self._d.cell();
 
-//         for (int y = _h - 1, idx = _w*_h - 1; y >= 0; y--) {
-//             for (int x = _w - 1; x >= 0; x--, idx--) {
-//                 if (cell[idx] != CELL_FLUID)
-//                     continue;
-//                 double t = dst[idx];
+        unsafe {
+            write_bytes(self._aDiag.as_mut_ptr(), 0, (self._w * self._h) as usize);
+            write_bytes(self._aPlusX.as_mut_ptr(), 0, (self._w * self._h) as usize);
+            write_bytes(self._aPlusY.as_mut_ptr(), 0, (self._w * self._h) as usize);
+        }
 
-//                 if (x < _w - 1 && cell[idx +  1] == CELL_FLUID)
-//                     t -= _aPlusX[idx]*_precon[idx]*dst[idx +  1];
-//                 if (y < _h - 1 && cell[idx + _w] == CELL_FLUID)
-//                     t -= _aPlusY[idx]*_precon[idx]*dst[idx + _w];
+        let mut idx = 0usize;
 
-//                 dst[idx] = t*_precon[idx];
-//             }
-//         }
-//     }
-//     double dotProduct(double *a, double *b) {
-//         const uint8_t *cell = _d->cell();
-//         double result = 0.0;
-//         for (int i = 0; i < _w*_h; i++)
-//             if (cell[i] == CELL_FLUID)
-//                 result += a[i]*b[i];
-//         return result;
-//     }
-//     void matrixVectorProduct(double *dst, double *b) {
-//         for (int y = 0, idx = 0; y < _h; y++) {
-//             for (int x = 0; x < _w; x++, idx++) {
-//                 double t = _aDiag[idx]*b[idx];
-//                 if (x > 0)
-//                     t += _aPlusX[idx -  1]*b[idx -  1];
-//                 if (y > 0)
-//                     t += _aPlusY[idx - _w]*b[idx - _w];
-//                 if (x < _w - 1)
-//                     t += _aPlusX[idx]*b[idx +  1];
-//                 if (y < _h - 1)
-//                     t += _aPlusY[idx]*b[idx + _w];
+        for y in 0..self._h {
+            for x in 0..self._w {
+                idx += 1;
 
-//                 dst[idx] = t;
-//             }
-//         }
-//     }
-//     void scaledAdd(double *dst, double *a, double *b, double s) {
-//         const uint8_t *cell = _d->cell();
-//         for (int i = 0; i < _w*_h; i++)
-//             if (cell[i] == CELL_FLUID)
-//                 dst[i] = a[i] + b[i]*s;
-//     }
-//     double infinityNorm(double *a) {
-//         const uint8_t *cell = _d->cell();
-//         double maxA = 0.0;
-//         for (int i = 0; i < _w*_h; i++)
-//             if (cell[i] == CELL_FLUID)
-//                 maxA = max(maxA, fabs(a[i]));
-//         return maxA;
-//     }
-//     void project(int limit) {
-//         memset(_p, 0,  _w*_h*sizeof(double));
-//         applyPreconditioner(_z, _r);
-//         memcpy(_s, _z, _w*_h*sizeof(double));
-//         double maxError = infinityNorm(_r);
-//         if (maxError < 1e-5) {
-//             printf("Initial guess sufficiently small\n");
-//             return;
-//         }
-//         double sigma = dotProduct(_z, _r);
-//         for (int iter = 0; iter < limit; iter++) {
-//             matrixVectorProduct(_z, _s);
-//             double alpha = sigma/dotProduct(_z, _s);
-//             scaledAdd(_p, _p, _s, alpha);
-//             scaledAdd(_r, _r, _z, -alpha);
-//             maxError = infinityNorm(_r);
-//             if (maxError < 1e-5) {
-//                 printf("Exiting solver after %d iterations, maximum error is %f\n", iter, maxError);
-//                 return;
-//             }
-//             applyPreconditioner(_z, _r);
-//             double sigmaNew = dotProduct(_z, _r);
-//             scaledAdd(_s, _z, _s, sigmaNew/sigma);
-//             sigma = sigmaNew;
-//         }
-//         printf("Exceeded budget of %d iterations, maximum error was %f\n", limit, maxError);
-//     }
-//     /* Similar to the pressure matrix, we cannot assume constant density per
-//      * cell here either and must modify the equations accordingly.
-//      */
-//     void applyPressure(double timestep) {
-//         double scale = timestep/_hx;
-//         const uint8_t *cell = _d->cell();
-//         for (int y = 0, idx = 0; y < _h; y++) {
-//             for (int x = 0; x < _w; x++, idx++) {
-//                 if (cell[idx] != CELL_FLUID)
-//                     continue;
-//                 _u->at(x, y)     -= scale*_p[idx]/_uDensity[_u->idx(x, y)];
-//                 _v->at(x, y)     -= scale*_p[idx]/_vDensity[_v->idx(x, y)];
-//                 _u->at(x + 1, y) += scale*_p[idx]/_uDensity[_u->idx(x + 1, y)];
-//                 _v->at(x, y + 1) += scale*_p[idx]/_vDensity[_v->idx(x, y + 1)];
-//             }
-//         }
-//     }
-//     void addBuoyancy(double timestep) {
-//         double alpha = (_densitySoot - _densityAir)/_densityAir;
+                if (cell[idx] != CELL_FLUID) {
+                    continue;
+                }
 
-//         for (int y = 0; y < _h; y++) {
-//             for (int x = 0; x < _w; x++) {
-//                 double buoyancy = timestep*_g*(alpha*_d->at(x, y) - (_t->at(x, y) - _tAmb)/_tAmb);
+                if (x < self._w - 1 && cell[idx + 1] == CELL_FLUID) {
+                    let factor = scale * self._u.volume(x + 1, y)
+                        / self._uDensity[self._u.idx(x + 1, y) as usize];
+                    self._aDiag[idx] += factor;
+                    self._aDiag[idx + 1] += factor;
+                    self._aPlusX[idx] = -factor;
+                }
+                if (y < self._h - 1 && cell[idx + self._w as usize] == CELL_FLUID) {
+                    let factor = scale * self._v.volume(x, y + 1)
+                        / self._vDensity[self._u.idx(x, y + 1) as usize];
+                    self._aDiag[idx] += factor;
+                    self._aDiag[idx + self._w as usize] += factor;
+                    self._aPlusY[idx] = -factor;
+                }
+            }
+        }
+    }
 
-//                 _v->at(x, y    ) += buoyancy*0.5;
-//                 _v->at(x, y + 1) += buoyancy*0.5;
-//             }
-//         }
-//     }
-//     void setBoundaryCondition() {
-//         const uint8_t *cell = _d->cell();
-//         const uint8_t *body = _d->body();
-//         for (int y = 0, idx = 0; y < _h; y++) {
-//             for (int x = 0; x < _w; x++, idx++) {
-//                 if (cell[idx] == CELL_SOLID) {
-//                     const SolidBody &b = *_bodies[body[idx]];
-//                     _u->at(x, y) = b.velocityX(x*_hx, (y + 0.5)*_hx);
-//                     _v->at(x, y) = b.velocityY((x + 0.5)*_hx, y*_hx);
-//                     _u->at(x + 1, y) = b.velocityX((x + 1.0)*_hx, (y + 0.5)*_hx);
-//                     _v->at(x, y + 1) = b.velocityY((x + 0.5)*_hx, (y + 1.0)*_hx);
-//                 }
-//             }
-//         }
-//         for (int y = 0; y < _h; y++)
-//             _u->at(0, y) = _u->at(_w, y) = 0.0;
-//         for (int x = 0; x < _w; x++)
-//             _v->at(x, 0) = _v->at(x, _h) = 0.0;
-//     }
-// public:
-//     FluidSolver(int w, int h, double rhoAir, double rhoSoot, double diffusion,
-//             const vector<const SolidBody *> &bodies) : _w(w), _h(h),
-//             _densityAir(rhoAir), _densitySoot(rhoSoot), _diffusion(diffusion),
-//             _bodies(bodies) {
-//         _tAmb = 294.0;
-//         _g    = 9.81;
-//         _hx = 1.0/min(w, h);
-//         _d = new FluidQuantity(_w,     _h,     0.5, 0.5, _hx);
-//         _t = new FluidQuantity(_w,     _h,     0.5, 0.5, _hx);
-//         _u = new FluidQuantity(_w + 1, _h,     0.0, 0.5, _hx);
-//         _v = new FluidQuantity(_w,     _h + 1, 0.5, 0.0, _hx);
-//         for (int i = 0; i < _w*_h; i++)
-//             _t->src()[i] = _tAmb;
-//         _r = new double[_w*_h];
-//         _p = new double[_w*_h];
-//         _z = new double[_w*_h];
-//         _s = new double[_w*_h];
-//         _aDiag  = new double[_w*_h];
-//         _aPlusX = new double[_w*_h];
-//         _aPlusY = new double[_w*_h];
-//         _precon = new double[_w*_h];
-//         _uDensity = new double[(_w + 1)*_h];
-//         _vDensity = new double[_w*(_h + 1)];
-//     }
-//     ~FluidSolver() {
-//         delete _d;
-//         delete _t;
-//         delete _u;
-//         delete _v;
-//         delete[] _r;
-//         delete[] _p;
-//         delete[] _z;
-//         delete[] _s;
-//         delete[] _aDiag;
-//         delete[] _aPlusX;
-//         delete[] _aPlusY;
-//         delete[] _precon;
-//         delete[] _uDensity;
-//         delete[] _vDensity;
-//     }
-//     void update(double timestep) {
-//         _d->fillSolidFields(_bodies);
-//         _t->fillSolidFields(_bodies);
-//         _u->fillSolidFields(_bodies);
-//         _v->fillSolidFields(_bodies);
-//         memcpy(_r, _t->src(), _w*_h*sizeof(double));
-//         buildHeatDiffusionMatrix(timestep);
-//         buildPreconditioner();
-//         project(2000);
-//         memcpy(_t->src(), _p, _w*_h*sizeof(double));
-//         _t->extrapolate();
-//         addBuoyancy(timestep);
-//         setBoundaryCondition();
-//         buildRhs();
-//         computeDensities();
-//         buildPressureMatrix(timestep);
-//         buildPreconditioner();
-//         project(2000);
-//         applyPressure(timestep);
-//         _d->extrapolate();
-//         _u->extrapolate();
-//         _v->extrapolate();
-//         setBoundaryCondition();
-//         _d->advect(timestep, *_u, *_v, _bodies);
-//         _t->advect(timestep, *_u, *_v, _bodies);
-//         _u->advect(timestep, *_u, *_v, _bodies);
-//         _v->advect(timestep, *_u, *_v, _bodies);
-//         _d->flip();
-//         _t->flip();
-//         _u->flip();
-//         _v->flip();
-//     }
-//     void addInflow(double x, double y, double w, double h, double d, double t, double u, double v) {
-//         _d->addInflow(x, y, x + w, y + h, d);
-//         _t->addInflow(x, y, x + w, y + h, t);
-//         _u->addInflow(x, y, x + w, y + h, u);
-//         _v->addInflow(x, y, x + w, y + h, v);
-//     }
-//     double ambientT() {
-//         return _tAmb;
-//     }
-//     void toImage(unsigned char *rgba, bool renderHeat) {
-//         for (int y = 0; y < _h; y++) {
-//             for (int x = 0; x < _w; x++) {
-//                 int idxl, idxr;
-//                 if (renderHeat) {
-//                     idxl = 4*(x + y*_w*2);
-//                     idxr = 4*(x + y*_w*2 + _w);
-//                 } else
-//                     idxr = 4*(x + y*_w);
-//                 double volume = _d->volume(x, y);
-//                 double shade = (1.0 - _d->at(x, y))*volume;
-//                 shade = min(max(shade, 0.0), 1.0);
-//                 rgba[idxr + 0] = (int)(shade*255.0);
-//                 rgba[idxr + 1] = (int)(shade*255.0);
-//                 rgba[idxr + 2] = (int)(shade*255.0);
-//                 rgba[idxr + 3] = 0xFF;
-//                 if (renderHeat) {
-//                     double t = (_t->at(x, y) - _tAmb)/700.0;
-//                     t = min(max(t, 0.0), 1.0);
-//                     double r = 1.0 + volume*(min(t*4.0, 1.0) - 1.0);
-//                     double g = 1.0 + volume*(min(t*2.0, 1.0) - 1.0);
-//                     double b = 1.0 + volume*(max(min(t*4.0 - 3.0, 1.0), 0.0) - 1.0);
-//                     rgba[idxl + 0] = (int)(r*255.0);
-//                     rgba[idxl + 1] = (int)(g*255.0);
-//                     rgba[idxl + 2] = (int)(b*255.0);
-//                     rgba[idxl + 3] = 0xFF;
-//                 }
-//             }
-//         }
-//     }
-// };
+    fn buildHeatDiffusionMatrix(&mut self, timestep: f64) {
+        for i in 0..self._w * self._h {
+            self._aDiag[i as usize] = 1.0;
+        }
+
+        unsafe {
+            write_bytes(self._aPlusX.as_mut_ptr(), 0, (self._w * self._h) as usize);
+            write_bytes(self._aPlusY.as_mut_ptr(), 0, (self._w * self._h) as usize);
+        }
+
+        let cell = self._d.cell();
+        let scale = self._diffusion * timestep * 1.0 / (self._hx * self._hx);
+
+        let mut idx = 0usize;
+
+        for y in 0..self._h {
+            for x in 0..self._w {
+                idx += 1;
+
+                if (cell[idx] != CELL_FLUID) {
+                    continue;
+                }
+                if (x < self._w - 1 && cell[idx + 1] == CELL_FLUID) {
+                    self._aDiag[idx] += scale;
+                    self._aDiag[idx + 1] += scale;
+                    self._aPlusX[idx] = -scale;
+                }
+                if (y < self._h - 1 && cell[idx + self._w as usize] == CELL_FLUID) {
+                    self._aDiag[idx] += scale;
+                    self._aDiag[idx + self._w as usize] += scale;
+                    self._aPlusY[idx] = -scale;
+                }
+            }
+        }
+    }
+
+    fn buildPreconditioner(&mut self) {
+        const tau: f64 = 0.97;
+        const sigma: f64 = 0.25;
+
+        let cell = self._d.cell();
+        let mut idx = 0usize;
+        for y in 0..self._h {
+            for x in 0..self._w {
+                idx += 1;
+
+                if (cell[idx] != CELL_FLUID) {
+                    continue;
+                }
+
+                let mut e = self._aDiag[idx];
+
+                if (x > 0 && cell[idx - 1] == CELL_FLUID) {
+                    let px = self._aPlusX[idx - 1] * self._precon[idx - 1];
+                    let py = self._aPlusY[idx - 1] * self._precon[idx - 1];
+                    e = e - (px * px + tau * px * py);
+                }
+                if (y > 0 && cell[idx - self._w as usize] == CELL_FLUID) {
+                    let px =
+                        self._aPlusX[idx - self._w as usize] * self._precon[idx - self._w as usize];
+                    let py =
+                        self._aPlusY[idx - self._w as usize] * self._precon[idx - self._w as usize];
+                    e = e - (py * py + tau * px * py);
+                }
+
+                if (e < sigma * self._aDiag[idx]) {
+                    e = self._aDiag[idx];
+                }
+
+                self._precon[idx] = 1.0 / f64::sqrt(e);
+            }
+        }
+    }
+
+    fn applyPreconditioner(&self, dst: &mut Vec<f64>, a: &Vec<f64>) {
+        let cell = self._d.cell();
+
+        let mut idx = 0usize;
+
+        for y in 0..self._h {
+            for x in 0..self._w {
+                idx += 1;
+
+                if (cell[idx] != CELL_FLUID) {
+                    continue;
+                }
+
+                let mut t = a[idx];
+
+                if (x > 0 && cell[idx - 1] == CELL_FLUID) {
+                    t -= self._aPlusX[idx - 1] * self._precon[idx - 1] * dst[idx - 1];
+                }
+                if (y > 0 && cell[idx - self._w as usize] == CELL_FLUID) {
+                    t -= self._aPlusY[idx - self._w as usize]
+                        * self._precon[idx - self._w as usize]
+                        * dst[idx - self._w as usize];
+                }
+
+                dst[idx] = t * self._precon[idx];
+            }
+        }
+
+        // TODO: Might bug
+
+        idx = (self._w * self._h - 1) as usize;
+
+        for y in self._h - 1..=0 {
+            for x in self._w - 1..=0 {
+                idx -= 1;
+
+                if (cell[idx] != CELL_FLUID) {
+                    continue;
+                }
+
+                let mut t = dst[idx];
+
+                if (x < self._w - 1 && cell[idx + 1] == CELL_FLUID) {
+                    t -= self._aPlusX[idx] * self._precon[idx] * dst[idx + 1];
+                }
+                if (y < self._h - 1 && cell[idx + self._w as usize] == CELL_FLUID) {
+                    t -= self._aPlusY[idx] * self._precon[idx] * dst[idx + self._w as usize];
+                }
+
+                dst[idx] = t * self._precon[idx];
+            }
+        }
+    }
+
+    fn dotProduct(&self, a: &Vec<f64>, b: &Vec<f64>) -> f64 {
+        let cell = self._d.cell();
+        let mut result = 0.0;
+
+        for i in 0..(self._w * self._h) as usize {
+            if (cell[i] == CELL_FLUID) {
+                result += a[i] * b[i];
+            }
+        }
+
+        result
+    }
+
+    fn matrixVectorProduct(&self, dst: &mut Vec<f64>, b: &Vec<f64>) {
+        let mut idx = 0usize;
+
+        for y in 0..self._h {
+            for x in 0..self._w {
+                idx += 1;
+                let mut t = self._aDiag[idx] * b[idx];
+                if (x > 0) {
+                    t += self._aPlusX[idx - 1] * b[idx - 1];
+                }
+                if (y > 0) {
+                    t += self._aPlusY[idx - self._w as usize] * b[idx - self._w as usize];
+                }
+                if (x < self._w - 1) {
+                    t += self._aPlusX[idx] * b[idx + 1];
+                }
+                if (y < self._h - 1) {
+                    t += self._aPlusY[idx] * b[idx + self._w as usize];
+                }
+
+                dst[idx] = t;
+            }
+        }
+    }
+
+    fn scaledAdd(&self, dst: &mut Vec<f64>, a: &Vec<f64>, b: &Vec<f64>, s: f64) {
+        let cell = self._d.cell();
+        for i in 0..(self._w * self._h) as usize {
+            if (cell[i] == CELL_FLUID) {
+                dst[i] = a[i] + b[i] * s;
+            }
+        }
+    }
+
+    fn scaledAddInPlaceA(&self, dst: &mut Vec<f64>, b: &Vec<f64>, s: f64) {
+        let cell = self._d.cell();
+        for i in 0..(self._w * self._h) as usize {
+            if (cell[i] == CELL_FLUID) {
+                dst[i] = dst[i] + b[i] * s;
+            }
+        }
+    }
+
+    fn scaledAddInPlaceB(&self, dst: &mut Vec<f64>, a: &Vec<f64>, s: f64) {
+        let cell = self._d.cell();
+        for i in 0..(self._w * self._h) as usize {
+            if (cell[i] == CELL_FLUID) {
+                dst[i] = a[i] + dst[i] * s;
+            }
+        }
+    }
+
+    fn infinityNorm(&self, a: &Vec<f64>) -> f64 {
+        let cell = self._d.cell();
+        let mut maxA = 0.0;
+
+        for i in 0..(self._w * self._h) as usize {
+            if (cell[i] == CELL_FLUID) {
+                maxA = f64::max(maxA, f64::abs(a[i]));
+            }
+        }
+
+        maxA
+    }
+
+    fn project(&mut self, limit: usize) {
+        unsafe {
+            write_bytes(self._p.as_mut_ptr(), 0, (self._w * self._h) as usize);
+        }
+
+        let mut z = &mut self._z.clone();
+        let mut p = &mut self._p.clone();
+        let mut r = &mut self._r.clone();
+        let mut s = &mut self._s.clone();
+
+        self.applyPreconditioner(&mut z, r);
+
+        unsafe {
+            copy_nonoverlapping(z.as_mut_ptr(), s.as_mut_ptr(), (self._w * self._h) as usize);
+        }
+
+        let mut maxError = self.infinityNorm(r);
+
+        if (maxError < 1e-5) {
+            println!("Initial guess sufficiently small");
+            self._z = z.clone();
+            self._p = p.clone();
+            self._r = r.clone();
+            self._s = s.clone();
+            return;
+        }
+
+        let mut sigma = self.dotProduct(z, r);
+
+        for iter in 0..limit {
+            self.matrixVectorProduct(&mut z, s);
+            let alpha = sigma / self.dotProduct(z, s);
+
+            self.scaledAddInPlaceA(&mut p, s, alpha);
+            self.scaledAddInPlaceA(&mut r, z, -alpha);
+
+            maxError = self.infinityNorm(r);
+
+            if (maxError < 1e-5) {
+                println!(
+                    "Exiting solver after {} iterations, maximum error is {}",
+                    iter, maxError
+                );
+                self._z = z.clone();
+                self._p = p.clone();
+                self._r = r.clone();
+                self._s = s.clone();
+                return;
+            }
+
+            self.applyPreconditioner(&mut z, r);
+            let sigmaNew = self.dotProduct(z, r);
+            self.scaledAddInPlaceB(&mut s, z, sigmaNew / sigma);
+            sigma = sigmaNew;
+        }
+
+        self._z = z.clone();
+        self._p = p.clone();
+        self._r = r.clone();
+        self._s = s.clone();
+        println!(
+            "Exceeded budget of {} iterations, maximum error was {}",
+            limit, maxError
+        );
+    }
+
+    /* Similar to the pressure matrix, we cannot assume constant density per
+     * cell here either and must modify the equations accordingly.
+     */
+    fn applyPressure(&mut self, timestep: f64) {
+        let scale = timestep / self._hx;
+        let cell = self._d.cell();
+        let mut idx = 0usize;
+
+        for y in 0..self._h {
+            for x in 0..self._w {
+                idx += 1;
+                if (cell[idx] != CELL_FLUID) {
+                    continue;
+                }
+                *self._u.at_mut(x, y) -=
+                    scale * self._p[idx] / self._uDensity[self._u.idx(x, y) as usize];
+                *self._v.at_mut(x, y) -=
+                    scale * self._p[idx] / self._vDensity[self._v.idx(x, y) as usize];
+                *self._u.at_mut(x + 1, y) +=
+                    scale * self._p[idx] / self._uDensity[self._u.idx(x + 1, y) as usize];
+                *self._v.at_mut(x, y + 1) +=
+                    scale * self._p[idx] / self._vDensity[self._v.idx(x, y + 1) as usize];
+            }
+        }
+    }
+
+    fn addBuoyancy(&mut self, timestep: f64) {
+        let alpha = (self._densitySoot - self._densityAir) / self._densityAir;
+
+        for y in 0..self._h {
+            for x in 0..self._w {
+                let buoyancy = timestep
+                    * self._g
+                    * (alpha * self._d.at(x, y) - (self._t.at(x, y) - self._tAmb) / self._tAmb);
+
+                *self._v.at_mut(x, y) += buoyancy * 0.5;
+                *self._v.at_mut(x, y + 1) += buoyancy * 0.5;
+            }
+        }
+    }
+
+    fn setBoundaryCondition(&mut self) {
+        let cell = self._d.cell();
+        let body = self._d.body();
+        let mut idx = 0usize;
+
+        for y in 0..self._h {
+            for x in 0..self._w {
+                idx += 1;
+                if (cell[idx] == CELL_SOLID) {
+                    let b = &self._bodies[body[idx] as usize];
+                    *self._u.at_mut(x, y) =
+                        b.velocityX(x as f64 * self._hx, (y as f64 + 0.5) * self._hx);
+                    *self._v.at_mut(x, y) =
+                        b.velocityY((x as f64 + 0.5) * self._hx, y as f64 * self._hx);
+                    *self._u.at_mut(x + 1, y) =
+                        b.velocityX((x as f64 + 1.0) * self._hx, (y as f64 + 0.5) * self._hx);
+                    *self._v.at_mut(x, y + 1) =
+                        b.velocityY((x as f64 + 0.5) * self._hx, (y as f64 + 1.0) * self._hx);
+                }
+            }
+        }
+        for y in 0..self._h {
+            *self._u.at_mut(0, y) = 0.0;
+            *self._u.at_mut(self._w, y) = 0.0;
+        }
+        for x in 0..self._w {
+            *self._v.at_mut(x, 0) = 0.0;
+            *self._v.at_mut(x, self._h) = 0.0;
+        }
+    }
+
+    fn new(
+        w: usize,
+        h: usize,
+        rhoAir: f64,
+        rhoSoot: f64,
+        diffusion: f64,
+        bodies: Vec<Box<SolidBody>>,
+    ) -> Self {
+        let _hx = 1.0 / usize::min(w, h) as f64;
+        let mut ret = Self {
+            _w: w as u32,
+            _h: h as u32,
+            _densityAir: rhoAir,
+            _densitySoot: rhoSoot,
+            _diffusion: diffusion,
+            _bodies: bodies,
+            _tAmb: 294.0,
+            _g: 9.81,
+            _hx,
+            _d: FluidQuantity::new(w as u32, h as u32, 0.5, 0.5, _hx),
+            _t: FluidQuantity::new(w as u32, h as u32, 0.5, 0.5, _hx),
+            _u: FluidQuantity::new(w as u32 + 1, h as u32, 0.0, 0.5, _hx),
+            _v: FluidQuantity::new(w as u32, h as u32 + 1, 0.5, 0.0, _hx),
+            _r: vec![0f64; w * h],
+            _p: vec![0f64; w * h],
+            _z: vec![0f64; w * h],
+            _s: vec![0f64; w * h],
+            _aDiag: vec![0f64; w * h],
+            _aPlusX: vec![0f64; w * h],
+            _aPlusY: vec![0f64; w * h],
+            _precon: vec![0f64; w * h],
+            _uDensity: vec![0f64; (w + 1) * h],
+            _vDensity: vec![0f64; w * (h + 1)],
+        };
+
+        for i in 0..w * h {
+            ret._t.src_mut()[i] = ret._tAmb;
+        }
+
+        ret
+    }
+
+    fn update(&mut self, timestep: f64) {
+        self._d.fillSolidFields(&self._bodies);
+        self._t.fillSolidFields(&self._bodies);
+        self._u.fillSolidFields(&self._bodies);
+        self._v.fillSolidFields(&self._bodies);
+        unsafe {
+            copy_nonoverlapping(
+                self._t.src_mut().as_mut_ptr(),
+                self._r.as_mut_ptr(),
+                (self._w * self._h) as usize,
+            );
+        }
+        self.buildHeatDiffusionMatrix(timestep);
+        self.buildPreconditioner();
+        self.project(2000);
+        unsafe {
+            copy_nonoverlapping(
+                self._p.as_mut_ptr(),
+                self._t.src_mut().as_mut_ptr(),
+                (self._w * self._h) as usize,
+            );
+        }
+        self._t.extrapolate();
+        self.addBuoyancy(timestep);
+        self.setBoundaryCondition();
+        self.buildRhs();
+        self.computeDensities();
+        self.buildPressureMatrix(timestep);
+        self.buildPreconditioner();
+        self.project(2000);
+        self.applyPressure(timestep);
+        self._d.extrapolate();
+        self._u.extrapolate();
+        self._v.extrapolate();
+        self.setBoundaryCondition();
+        self._d.advect(timestep, &self._u, &self._v, &self._bodies);
+        self._t.advect(timestep, &self._u, &self._v, &self._bodies);
+        self._u
+            .advect(timestep, &self._u.clone(), &self._v, &self._bodies);
+        self._v
+            .advect(timestep, &self._u, &self._v.clone(), &self._bodies);
+        self._d.flip();
+        self._t.flip();
+        self._u.flip();
+        self._v.flip();
+    }
+
+    fn addInflow(&mut self, x: f64, y: f64, w: f64, h: f64, d: f64, t: f64, u: f64, v: f64) {
+        self._d.addInflow(x, y, x + w, y + h, d);
+        self._t.addInflow(x, y, x + w, y + h, t);
+        self._u.addInflow(x, y, x + w, y + h, u);
+        self._v.addInflow(x, y, x + w, y + h, v);
+    }
+
+    fn ambientT(&self) -> f64 {
+        self._tAmb
+    }
+
+    //     fn toImage(unsigned char *rgba, bool renderHeat) {
+    //         for (int y = 0; y < _h; y++) {
+    //             for (int x = 0; x < _w; x++) {
+    //                 int idxl, idxr;
+    //                 if (renderHeat) {
+    //                     idxl = 4*(x + y*_w*2);
+    //                     idxr = 4*(x + y*_w*2 + _w);
+    //                 } else
+    //                     idxr = 4*(x + y*_w);
+    //                 double volume = _d.volume(x, y);
+    //                 double shade = (1.0 - _d.at(x, y))*volume;
+    //                 shade = min(max(shade, 0.0), 1.0);
+    //                 rgba[idxr + 0] = (int)(shade*255.0);
+    //                 rgba[idxr + 1] = (int)(shade*255.0);
+    //                 rgba[idxr + 2] = (int)(shade*255.0);
+    //                 rgba[idxr + 3] = 0xFF;
+    //                 if (renderHeat) {
+    //                     double t = (_t.at(x, y) - _tAmb)/700.0;
+    //                     t = min(max(t, 0.0), 1.0);
+    //                     double r = 1.0 + volume*(min(t*4.0, 1.0) - 1.0);
+    //                     double g = 1.0 + volume*(min(t*2.0, 1.0) - 1.0);
+    //                     double b = 1.0 + volume*(max(min(t*4.0 - 3.0, 1.0), 0.0) - 1.0);
+    //                     rgba[idxl + 0] = (int)(r*255.0);
+    //                     rgba[idxl + 1] = (int)(g*255.0);
+    //                     rgba[idxl + 2] = (int)(b*255.0);
+    //                     rgba[idxl + 3] = 0xFF;
+    //                 }
+    //             }
+    //         }
+    //     }
+}
