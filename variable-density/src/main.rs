@@ -1319,7 +1319,7 @@ fn main() {
             time += timestep;
         }
         let image = solver.toImage(renderHeat);
-        let path = format!("FrameL{:0>5}.png", iterations);
+        let path = format!("frame{:0>5}.png", iterations);
 
         iterations += 1;
 
