@@ -275,14 +275,14 @@ struct FluidQuantity {
     dst: Vec<f64>,
     phi: Vec<f64>,
     volume: Vec<f64>,
-    normalX: Vec<f64>,
-    normalY: Vec<f64>,
+    normal_x: Vec<f64>,
+    normal_y: Vec<f64>,
     cell: Vec<u8>,
     body: Vec<u8>,
     mask: Vec<u8>,
 
-    w: u32,
-    h: u32,
+    w: usize,
+    h: usize,
     ox: f64,
     oy: f64,
     hx: f64,
@@ -334,17 +334,17 @@ impl FluidQuantity {
         *y -= timestep * ((2.0 / 9.0) * first_v + (3.0 / 9.0) * mid_v + (4.0 / 9.0) * last_v);
     }
 
-    fn new(w: u32, h: u32, ox: f64, oy: f64, hx: f64) -> Self {
+    fn new(w: usize, h: usize, ox: f64, oy: f64, hx: f64) -> Self {
         Self {
-            src: vec![0f64; (w * h) as usize],
-            dst: vec![0f64; (w * h) as usize],
-            phi: vec![0f64; ((w + 1) * (h + 1)) as usize],
-            volume: vec![1f64; (w * h) as usize],
-            normalX: vec![0f64; (w * h) as usize],
-            normalY: vec![0f64; (w * h) as usize],
-            cell: vec![CELL_FLUID; (w * h) as usize],
-            body: vec![0u8; (w * h) as usize],
-            mask: vec![0u8; (w * h) as usize],
+            src: vec![0f64; w * h],
+            dst: vec![0f64; w * h],
+            phi: vec![0f64; (w + 1) * (h + 1)],
+            volume: vec![1f64; w * h],
+            normal_x: vec![0f64; w * h],
+            normal_y: vec![0f64; w * h],
+            cell: vec![CELL_FLUID; w * h],
+            body: vec![0u8; w * h],
+            mask: vec![0u8; w * h],
 
             w,
             h,
@@ -372,27 +372,28 @@ impl FluidQuantity {
     fn body(&self) -> &Vec<u8> {
         &self.body
     }
-    fn idx(&self, x: u32, y: u32) -> u32 {
+
+    fn idx(&self, x: usize, y: usize) -> usize {
         x + y * self.w
     }
 
-    fn at(&self, x: u32, y: u32) -> f64 {
-        self.src[(x + y * self.w) as usize]
+    fn at(&self, x: usize, y: usize) -> f64 {
+        self.src[(x + y * self.w)]
     }
 
-    fn at_mut(&mut self, x: u32, y: u32) -> &mut f64 {
-        &mut self.src[(x + y * self.w) as usize]
+    fn at_mut(&mut self, x: usize, y: usize) -> &mut f64 {
+        &mut self.src[(x + y * self.w)]
     }
 
-    fn volume(&self, x: u32, y: u32) -> f64 {
-        self.volume[(x + y * self.w) as usize]
+    fn volume(&self, x: usize, y: usize) -> f64 {
+        self.volume[(x + y * self.w)]
     }
 
     fn lerp(&self, mut x: f64, mut y: f64) -> f64 {
         x = f64::min(f64::max(x - self.ox, 0.0), self.w as f64 - 1.001);
         y = f64::min(f64::max(y - self.oy, 0.0), self.h as f64 - 1.001);
-        let ix = x as u32;
-        let iy = y as u32;
+        let ix = x as usize;
+        let iy = y as usize;
         x -= ix as f64;
         y -= iy as f64;
 
@@ -407,18 +408,18 @@ impl FluidQuantity {
     fn cerp(&self, mut x: f64, mut y: f64) -> f64 {
         x = f64::min(f64::max(x - self.ox, 0.0), self.w as f64 - 1.001);
         y = f64::min(f64::max(y - self.oy, 0.0), self.h as f64 - 1.001);
-        let ix = x as u32;
-        let iy = y as u32;
+        let ix = x as usize;
+        let iy = y as usize;
         x -= ix as f64;
         y -= iy as f64;
-        let x0 = i64::max(ix as i64 - 1, 0) as u32;
+        let x0 = i64::max(ix as i64 - 1, 0) as usize;
         let x1 = ix;
         let x2 = ix + 1;
-        let x3 = i64::min(ix as i64 + 2, self.w as i64 - 1) as u32;
-        let y0 = i64::max(iy as i64 - 1, 0) as u32;
+        let x3 = i64::min(ix as i64 + 2, self.w as i64 - 1) as usize;
+        let y0 = i64::max(iy as i64 - 1, 0) as usize;
         let y1 = iy;
         let y2 = iy + 1;
-        let y3 = u32::min(iy + 2, self.h - 1);
+        let y3 = usize::min(iy + 2, self.h - 1);
 
         let q0 = cerp(
             self.at(x0, y0),
@@ -452,13 +453,13 @@ impl FluidQuantity {
     }
 
     fn back_project(&self, x: &mut f64, y: &mut f64, bodies: &Vec<Box<dyn SolidBody>>) {
-        let rx = u32::min(u32::max((*x - self.ox) as u32, 0), self.w - 1);
-        let ry = u32::min(u32::max((*y - self.oy) as u32, 0), self.h - 1);
+        let rx = usize::min(usize::max((*x - self.ox) as usize, 0), self.w - 1);
+        let ry = usize::min(usize::max((*y - self.oy) as usize, 0), self.h - 1);
 
-        if self.cell[(rx + ry * self.w) as usize] != CELL_FLUID {
+        if self.cell[(rx + ry * self.w)] != CELL_FLUID {
             *x = (*x - self.ox) * self.hx;
             *y = (*y - self.oy) * self.hx;
-            bodies[self.body[(rx + ry * self.w) as usize] as usize].closest_surface_point(x, y);
+            bodies[self.body[(rx + ry * self.w)] as usize].closest_surface_point(x, y);
             *x = *x / self.hx + self.ox;
             *y = *y / self.hx + self.oy;
         }
@@ -473,7 +474,7 @@ impl FluidQuantity {
     ) {
         for iy in 0..self.h {
             for ix in 0..self.w {
-                let idx = (iy * self.w + ix) as usize;
+                let idx = iy * self.w + ix;
                 if self.cell[idx] == CELL_FLUID {
                     let mut x = ix as f64 + self.ox;
                     let mut y = iy as f64 + self.oy;
@@ -486,13 +487,13 @@ impl FluidQuantity {
     }
 
     fn add_inflow(&mut self, x0: f64, y0: f64, x1: f64, y1: f64, v: f64) {
-        let ix0 = (x0 / self.hx - self.ox) as u32;
-        let iy0 = (y0 / self.hx - self.oy) as u32;
-        let ix1 = (x1 / self.hx - self.ox) as u32;
-        let iy1 = (y1 / self.hx - self.oy) as u32;
+        let ix0 = (x0 / self.hx - self.ox) as usize;
+        let iy0 = (y0 / self.hx - self.oy) as usize;
+        let ix1 = (x1 / self.hx - self.ox) as usize;
+        let iy1 = (y1 / self.hx - self.oy) as usize;
         // TODO: Might bug
-        for y in u32::max(iy0, 0)..u32::min(iy1, self.h) {
-            for x in u32::max(ix0, 0)..u32::min(ix1, self.h) {
+        for y in usize::max(iy0, 0)..usize::min(iy1, self.h) {
+            for x in usize::max(ix0, 0)..usize::min(ix1, self.h) {
                 let l = length(
                     (2.0 * (x as f64 + 0.5) * self.hx - (x0 + x1)) / (x1 - x0),
                     (2.0 * (y as f64 + 0.5) * self.hx - (y0 + y1)) / (y1 - y0),
@@ -500,8 +501,8 @@ impl FluidQuantity {
 
                 let vi = cubic_pulse(l) * v;
 
-                if f64::abs(self.src[(x + y * self.w) as usize]) < f64::abs(vi) {
-                    self.src[(x + y * self.w) as usize] = vi;
+                if f64::abs(self.src[(x + y * self.w)]) < f64::abs(vi) {
+                    self.src[(x + y * self.w)] = vi;
                 }
             }
         }
@@ -514,7 +515,7 @@ impl FluidQuantity {
 
         for iy in 0..self.h {
             for ix in 0..self.w {
-                let idx = (iy * self.w + ix) as usize;
+                let idx = iy * self.w + ix;
                 let x = (ix as f64 + self.ox - 0.5) * self.hx;
                 let y = (iy as f64 + self.oy - 0.5) * self.hx;
                 self.phi[idx] = bodies[0].distance(x, y);
@@ -526,7 +527,7 @@ impl FluidQuantity {
 
         for iy in 0..self.h {
             for ix in 0..self.w {
-                let idx = (iy * self.w + ix) as usize;
+                let idx = iy * self.w + ix;
                 let x = (ix as f64 + self.ox) * self.hx;
                 let y = (iy as f64 + self.oy) * self.hx;
 
@@ -546,24 +547,24 @@ impl FluidQuantity {
 
                 self.volume[idx] = 1.0
                     - occupancy(
-                        self.phi[(idxp) as usize],
-                        self.phi[(idxp + 1) as usize],
-                        self.phi[(idxp + self.w + 1) as usize],
-                        self.phi[(idxp + self.w + 2) as usize],
+                        self.phi[(idxp)],
+                        self.phi[(idxp + 1)],
+                        self.phi[(idxp + self.w + 1)],
+                        self.phi[(idxp + self.w + 2)],
                     );
 
                 if self.volume[idx] < 0.01 {
                     self.volume[idx] = 0.0;
                 }
 
-                bodies[self.body[idx as usize] as usize].distance_normal(
-                    &mut self.normalX[idx as usize],
-                    &mut self.normalY[idx as usize],
+                bodies[self.body[idx] as usize].distance_normal(
+                    &mut self.normal_x[idx],
+                    &mut self.normal_y[idx],
                     x,
                     y,
                 );
 
-                self.cell[idx] = if self.volume[idx as usize] == 0.0 {
+                self.cell[idx] = if self.volume[idx] == 0.0 {
                     CELL_SOLID
                 } else {
                     CELL_FLUID
@@ -575,21 +576,22 @@ impl FluidQuantity {
     fn fill_solid_mask(&mut self) {
         for y in 1..self.h - 1 {
             for x in 1..self.w - 1 {
-                let idx = (x + y * self.w) as usize;
+                let idx = x + y * self.w;
 
                 if self.cell[idx] == CELL_FLUID {
                     continue;
                 }
-                let nx = self.normalX[idx];
-                let ny = self.normalY[idx];
+                let nx = self.normal_x[idx];
+                let ny = self.normal_y[idx];
 
                 self.mask[idx] = 0;
 
-                if nx != 0.0 && self.cell[idx + f64::signum(nx) as usize] != CELL_FLUID {
+                if nx != 0.0 && self.cell[(idx as f64 + f64::signum(nx)) as usize] != CELL_FLUID {
                     self.mask[idx] |= 1;
                 }
                 if ny != 0.0
-                    && self.cell[idx + (f64::signum(ny) as u32 * self.w) as usize] != CELL_FLUID
+                    && self.cell[(idx as f64 + f64::signum(ny) * self.w as f64) as usize]
+                        != CELL_FLUID
                 {
                     self.mask[idx] |= 2;
                 }
@@ -597,19 +599,19 @@ impl FluidQuantity {
         }
     }
 
-    fn extrapolate_normal(&self, idx: u32) -> f64 {
-        let nx = self.normalX[idx as usize];
-        let ny = self.normalY[idx as usize];
-        let src_x = self.src[(idx + f64::signum(nx) as u32) as usize];
-        let src_y = self.src[(idx + f64::signum(ny) as u32 * self.w) as usize];
+    fn extrapolate_normal(&self, idx: usize) -> f64 {
+        let nx = self.normal_x[idx];
+        let ny = self.normal_y[idx];
+        let src_x = self.src[(idx as f64 + f64::signum(nx)) as usize];
+        let src_y = self.src[(idx as f64 + f64::signum(ny) * self.w as f64) as usize];
 
         (f64::abs(nx) * src_x + f64::abs(ny) * src_y) / (f64::abs(nx) + f64::abs(ny))
     }
 
-    fn free_neighbour(&mut self, idx: u32, border: &mut Vec<u32>, mask: u8) {
-        self.mask[idx as usize] &= !mask;
+    fn free_neighbour(&mut self, idx: usize, border: &mut Vec<usize>, mask: u8) {
+        self.mask[idx] &= !mask;
 
-        if self.cell[idx as usize] != CELL_FLUID && self.mask[idx as usize] == 0 {
+        if self.cell[idx] != CELL_FLUID && self.mask[idx] == 0 {
             border.push(idx);
         }
     }
@@ -623,7 +625,7 @@ impl FluidQuantity {
             for x in 1..self.w {
                 let idx = x + y * self.w;
 
-                if self.cell[idx as usize] != CELL_FLUID && self.mask[idx as usize] == 0 {
+                if self.cell[idx] != CELL_FLUID && self.mask[idx] == 0 {
                     border.push(idx);
                 }
             }
@@ -632,18 +634,18 @@ impl FluidQuantity {
         while !border.is_empty() {
             let idx = border.pop().unwrap();
 
-            self.src[idx as usize] = self.extrapolate_normal(idx);
+            self.src[idx] = self.extrapolate_normal(idx);
 
-            if self.normalX[(idx - 1) as usize] > 0.0 {
+            if self.normal_x[(idx - 1)] > 0.0 {
                 self.free_neighbour(idx - 1, &mut border, 1);
             }
-            if self.normalX[(idx + 1) as usize] < 0.0 {
+            if self.normal_x[(idx + 1)] < 0.0 {
                 self.free_neighbour(idx + 1, &mut border, 1);
             }
-            if self.normalY[(idx - self.w) as usize] > 0.0 {
+            if self.normal_y[(idx - self.w)] > 0.0 {
                 self.free_neighbour(idx - self.w, &mut border, 2);
             }
-            if self.normalY[(idx + self.w) as usize] < 0.0 {
+            if self.normal_y[(idx + self.w)] < 0.0 {
                 self.free_neighbour(idx + self.w, &mut border, 2);
             }
         }
@@ -658,8 +660,8 @@ struct FluidSolver {
     /* Densities at staggered grid locations */
     u_density: Vec<f64>,
     v_density: Vec<f64>,
-    w: u32,
-    h: u32,
+    w: usize,
+    h: usize,
     hx: f64,
     density_air: f64,
     density_soot: f64,
@@ -686,7 +688,7 @@ impl FluidSolver {
 
         for y in 0..self.h {
             for x in 0..self.w {
-                let idx = (y * self.w + x) as usize;
+                let idx = y * self.w + x;
 
                 if cell[idx] == CELL_FLUID {
                     self.r[idx] = -scale
@@ -706,7 +708,7 @@ impl FluidSolver {
                     }
                     if y > 0 {
                         self.r[idx] -= (self.v.volume(x, y) - vol)
-                            * self.bodies[body[idx - self.w as usize] as usize]
+                            * self.bodies[body[idx - self.w] as usize]
                                 .velocity_y((x as f64 + 0.5) * self.hx, y as f64 * self.hx);
                     }
                     if x < self.w - 1 {
@@ -716,7 +718,7 @@ impl FluidSolver {
                     }
                     if y < self.h - 1 {
                         self.r[idx] += (self.v.volume(x, y + 1) - vol)
-                            * self.bodies[body[idx + self.w as usize] as usize]
+                            * self.bodies[body[idx + self.w] as usize]
                                 .velocity_y((x as f64 + 0.5) * self.hx, (y as f64 + 1.0) * self.hx);
                     }
                 } else {
@@ -733,16 +735,8 @@ impl FluidSolver {
         let alpha = (self.density_soot - self.density_air) / self.density_air;
 
         unsafe {
-            write_bytes(
-                self.u_density.as_mut_ptr(),
-                0,
-                ((self.w + 1) * self.h) as usize,
-            );
-            write_bytes(
-                self.v_density.as_mut_ptr(),
-                0,
-                (self.w * (self.h + 1)) as usize,
-            );
+            write_bytes(self.u_density.as_mut_ptr(), 0, (self.w + 1) * self.h);
+            write_bytes(self.v_density.as_mut_ptr(), 0, self.w * (self.h + 1));
         }
 
         for y in 0..self.h {
@@ -750,10 +744,10 @@ impl FluidSolver {
                 let mut density = self.density_air * self.t_amb / self.t.at(x, y)
                     * (1.0 + alpha * self.d.at(x, y));
                 density = f64::max(density, 0.05 * self.density_air); /* Clamp dangerously low densities */
-                self.u_density[self.u.idx(x, y) as usize] += 0.5 * density;
-                self.v_density[self.v.idx(x, y) as usize] += 0.5 * density;
-                self.u_density[self.u.idx(x + 1, y) as usize] += 0.5 * density;
-                self.v_density[self.v.idx(x, y + 1) as usize] += 0.5 * density;
+                self.u_density[self.u.idx(x, y)] += 0.5 * density;
+                self.v_density[self.v.idx(x, y)] += 0.5 * density;
+                self.u_density[self.u.idx(x + 1, y)] += 0.5 * density;
+                self.v_density[self.v.idx(x, y + 1)] += 0.5 * density;
             }
         }
     }
@@ -766,31 +760,31 @@ impl FluidSolver {
         let cell = self.d.cell();
 
         unsafe {
-            write_bytes(self.a_diag.as_mut_ptr(), 0, (self.w * self.h) as usize);
-            write_bytes(self.a_plus_x.as_mut_ptr(), 0, (self.w * self.h) as usize);
-            write_bytes(self.a_plus_y.as_mut_ptr(), 0, (self.w * self.h) as usize);
+            write_bytes(self.a_diag.as_mut_ptr(), 0, self.w * self.h);
+            write_bytes(self.a_plus_x.as_mut_ptr(), 0, self.w * self.h);
+            write_bytes(self.a_plus_y.as_mut_ptr(), 0, self.w * self.h);
         }
 
         for y in 0..self.h {
             for x in 0..self.w {
-                let idx = (y * self.w + x) as usize;
+                let idx = y * self.w + x;
 
                 if cell[idx] != CELL_FLUID {
                     continue;
                 }
 
                 if x < self.w - 1 && cell[idx + 1] == CELL_FLUID {
-                    let factor = scale * self.u.volume(x + 1, y)
-                        / self.u_density[self.u.idx(x + 1, y) as usize];
+                    let factor =
+                        scale * self.u.volume(x + 1, y) / self.u_density[self.u.idx(x + 1, y)];
                     self.a_diag[idx] += factor;
                     self.a_diag[idx + 1] += factor;
                     self.a_plus_x[idx] = -factor;
                 }
-                if y < self.h - 1 && cell[idx + self.w as usize] == CELL_FLUID {
-                    let factor = scale * self.v.volume(x, y + 1)
-                        / self.v_density[self.u.idx(x, y + 1) as usize];
+                if y < self.h - 1 && cell[idx + self.w] == CELL_FLUID {
+                    let factor =
+                        scale * self.v.volume(x, y + 1) / self.v_density[self.u.idx(x, y + 1)];
                     self.a_diag[idx] += factor;
-                    self.a_diag[idx + self.w as usize] += factor;
+                    self.a_diag[idx + self.w] += factor;
                     self.a_plus_y[idx] = -factor;
                 }
             }
@@ -799,12 +793,12 @@ impl FluidSolver {
 
     fn build_heat_diffusion_matrix(&mut self, timestep: f64) {
         for i in 0..self.w * self.h {
-            self.a_diag[i as usize] = 1.0;
+            self.a_diag[i] = 1.0;
         }
 
         unsafe {
-            write_bytes(self.a_plus_x.as_mut_ptr(), 0, (self.w * self.h) as usize);
-            write_bytes(self.a_plus_y.as_mut_ptr(), 0, (self.w * self.h) as usize);
+            write_bytes(self.a_plus_x.as_mut_ptr(), 0, self.w * self.h);
+            write_bytes(self.a_plus_y.as_mut_ptr(), 0, self.w * self.h);
         }
 
         let cell = self.d.cell();
@@ -812,7 +806,7 @@ impl FluidSolver {
 
         for y in 0..self.h {
             for x in 0..self.w {
-                let idx = (y * self.w + x) as usize;
+                let idx = y * self.w + x;
 
                 if cell[idx] != CELL_FLUID {
                     continue;
@@ -822,9 +816,9 @@ impl FluidSolver {
                     self.a_diag[idx + 1] += scale;
                     self.a_plus_x[idx] = -scale;
                 }
-                if y < self.h - 1 && cell[idx + self.w as usize] == CELL_FLUID {
+                if y < self.h - 1 && cell[idx + self.w] == CELL_FLUID {
                     self.a_diag[idx] += scale;
-                    self.a_diag[idx + self.w as usize] += scale;
+                    self.a_diag[idx + self.w] += scale;
                     self.a_plus_y[idx] = -scale;
                 }
             }
@@ -838,7 +832,7 @@ impl FluidSolver {
         let cell = self.d.cell();
         for y in 0..self.h {
             for x in 0..self.w {
-                let idx = (y * self.w + x) as usize;
+                let idx = y * self.w + x;
 
                 if cell[idx] != CELL_FLUID {
                     continue;
@@ -851,11 +845,9 @@ impl FluidSolver {
                     let py = self.a_plus_y[idx - 1] * self.precon[idx - 1];
                     e = e - (px * px + TAU * px * py);
                 }
-                if y > 0 && cell[idx - self.w as usize] == CELL_FLUID {
-                    let px =
-                        self.a_plus_x[idx - self.w as usize] * self.precon[idx - self.w as usize];
-                    let py =
-                        self.a_plus_y[idx - self.w as usize] * self.precon[idx - self.w as usize];
+                if y > 0 && cell[idx - self.w] == CELL_FLUID {
+                    let px = self.a_plus_x[idx - self.w] * self.precon[idx - self.w];
+                    let py = self.a_plus_y[idx - self.w] * self.precon[idx - self.w];
                     e = e - (py * py + TAU * px * py);
                 }
 
@@ -873,7 +865,7 @@ impl FluidSolver {
 
         for y in 0..self.h {
             for x in 0..self.w {
-                let idx = (y * self.w + x) as usize;
+                let idx = y * self.w + x;
 
                 if cell[idx] != CELL_FLUID {
                     continue;
@@ -884,10 +876,9 @@ impl FluidSolver {
                 if x > 0 && cell[idx - 1] == CELL_FLUID {
                     t -= self.a_plus_x[idx - 1] * self.precon[idx - 1] * dst[idx - 1];
                 }
-                if y > 0 && cell[idx - self.w as usize] == CELL_FLUID {
-                    t -= self.a_plus_y[idx - self.w as usize]
-                        * self.precon[idx - self.w as usize]
-                        * dst[idx - self.w as usize];
+                if y > 0 && cell[idx - self.w] == CELL_FLUID {
+                    t -=
+                        self.a_plus_y[idx - self.w] * self.precon[idx - self.w] * dst[idx - self.w];
                 }
 
                 dst[idx] = t * self.precon[idx];
@@ -897,7 +888,7 @@ impl FluidSolver {
         // TODO: Might bug
         for y in self.h - 1..=0 {
             for x in self.w - 1..=0 {
-                let idx = (y * self.w + x) as usize;
+                let idx = y * self.w + x;
 
                 if cell[idx] != CELL_FLUID {
                     continue;
@@ -908,8 +899,8 @@ impl FluidSolver {
                 if x < self.w - 1 && cell[idx + 1] == CELL_FLUID {
                     t -= self.a_plus_x[idx] * self.precon[idx] * dst[idx + 1];
                 }
-                if y < self.h - 1 && cell[idx + self.w as usize] == CELL_FLUID {
-                    t -= self.a_plus_y[idx] * self.precon[idx] * dst[idx + self.w as usize];
+                if y < self.h - 1 && cell[idx + self.w] == CELL_FLUID {
+                    t -= self.a_plus_y[idx] * self.precon[idx] * dst[idx + self.w];
                 }
 
                 dst[idx] = t * self.precon[idx];
@@ -921,7 +912,7 @@ impl FluidSolver {
         let cell = self.d.cell();
         let mut result = 0.0;
 
-        for i in 0..(self.w * self.h) as usize {
+        for i in 0..(self.w * self.h) {
             if cell[i] == CELL_FLUID {
                 result += a[i] * b[i];
             }
@@ -933,19 +924,19 @@ impl FluidSolver {
     fn matrix_vector_product(&self, dst: &mut Vec<f64>, b: &Vec<f64>) {
         for y in 0..self.h {
             for x in 0..self.w {
-                let idx = (y * self.w + x) as usize;
+                let idx = y * self.w + x;
                 let mut t = self.a_diag[idx] * b[idx];
                 if x > 0 {
                     t += self.a_plus_x[idx - 1] * b[idx - 1];
                 }
                 if y > 0 {
-                    t += self.a_plus_y[idx - self.w as usize] * b[idx - self.w as usize];
+                    t += self.a_plus_y[idx - self.w] * b[idx - self.w];
                 }
                 if x < self.w - 1 {
                     t += self.a_plus_x[idx] * b[idx + 1];
                 }
                 if y < self.h - 1 {
-                    t += self.a_plus_y[idx] * b[idx + self.w as usize];
+                    t += self.a_plus_y[idx] * b[idx + self.w];
                 }
 
                 dst[idx] = t;
@@ -955,7 +946,7 @@ impl FluidSolver {
 
     fn scaled_add(&self, dst: &mut Vec<f64>, a: &Vec<f64>, b: &Vec<f64>, s: f64) {
         let cell = self.d.cell();
-        for i in 0..(self.w * self.h) as usize {
+        for i in 0..(self.w * self.h) {
             if cell[i] == CELL_FLUID {
                 dst[i] = a[i] + b[i] * s;
             }
@@ -964,7 +955,7 @@ impl FluidSolver {
 
     fn scaled_add_in_place_a(&self, dst: &mut Vec<f64>, b: &Vec<f64>, s: f64) {
         let cell = self.d.cell();
-        for i in 0..(self.w * self.h) as usize {
+        for i in 0..(self.w * self.h) {
             if cell[i] == CELL_FLUID {
                 dst[i] = dst[i] + b[i] * s;
             }
@@ -973,7 +964,7 @@ impl FluidSolver {
 
     fn scaled_add_in_place_b(&self, dst: &mut Vec<f64>, a: &Vec<f64>, s: f64) {
         let cell = self.d.cell();
-        for i in 0..(self.w * self.h) as usize {
+        for i in 0..(self.w * self.h) {
             if cell[i] == CELL_FLUID {
                 dst[i] = a[i] + dst[i] * s;
             }
@@ -984,7 +975,7 @@ impl FluidSolver {
         let cell = self.d.cell();
         let mut max_a = 0.0;
 
-        for i in 0..(self.w * self.h) as usize {
+        for i in 0..(self.w * self.h) {
             if cell[i] == CELL_FLUID {
                 max_a = f64::max(max_a, f64::abs(a[i]));
             }
@@ -995,7 +986,7 @@ impl FluidSolver {
 
     fn project(&mut self, limit: usize) {
         unsafe {
-            write_bytes(self.p.as_mut_ptr(), 0, (self.w * self.h) as usize);
+            write_bytes(self.p.as_mut_ptr(), 0, self.w * self.h);
         }
 
         let mut z = &mut self.z.clone();
@@ -1006,7 +997,7 @@ impl FluidSolver {
         self.apply_preconditioner(&mut z, r);
 
         unsafe {
-            copy_nonoverlapping(z.as_mut_ptr(), s.as_mut_ptr(), (self.w * self.h) as usize);
+            copy_nonoverlapping(z.as_mut_ptr(), s.as_mut_ptr(), self.w * self.h);
         }
 
         let mut max_error = self.infinity_norm(r);
@@ -1068,18 +1059,16 @@ impl FluidSolver {
 
         for y in 0..self.h {
             for x in 0..self.w {
-                let idx = (y * self.w + x) as usize;
+                let idx = y * self.w + x;
                 if cell[idx] != CELL_FLUID {
                     continue;
                 }
-                *self.u.at_mut(x, y) -=
-                    scale * self.p[idx] / self.u_density[self.u.idx(x, y) as usize];
-                *self.v.at_mut(x, y) -=
-                    scale * self.p[idx] / self.v_density[self.v.idx(x, y) as usize];
+                *self.u.at_mut(x, y) -= scale * self.p[idx] / self.u_density[self.u.idx(x, y)];
+                *self.v.at_mut(x, y) -= scale * self.p[idx] / self.v_density[self.v.idx(x, y)];
                 *self.u.at_mut(x + 1, y) +=
-                    scale * self.p[idx] / self.u_density[self.u.idx(x + 1, y) as usize];
+                    scale * self.p[idx] / self.u_density[self.u.idx(x + 1, y)];
                 *self.v.at_mut(x, y + 1) +=
-                    scale * self.p[idx] / self.v_density[self.v.idx(x, y + 1) as usize];
+                    scale * self.p[idx] / self.v_density[self.v.idx(x, y + 1)];
             }
         }
     }
@@ -1105,7 +1094,7 @@ impl FluidSolver {
 
         for y in 0..self.h {
             for x in 0..self.w {
-                let idx = (y * self.w + x) as usize;
+                let idx = y * self.w + x;
                 if cell[idx] == CELL_SOLID {
                     let b = &self.bodies[body[idx] as usize];
                     *self.u.at_mut(x, y) =
@@ -1139,8 +1128,8 @@ impl FluidSolver {
     ) -> Self {
         let hx = 1.0 / usize::min(w, h) as f64;
         let mut ret = Self {
-            w: w as u32,
-            h: h as u32,
+            w,
+            h,
             density_air: rho_air,
             density_soot: rho_soot,
             diffusion: diffusion,
@@ -1148,10 +1137,10 @@ impl FluidSolver {
             t_amb: 294.0,
             g: 9.81,
             hx,
-            d: FluidQuantity::new(w as u32, h as u32, 0.5, 0.5, hx),
-            t: FluidQuantity::new(w as u32, h as u32, 0.5, 0.5, hx),
-            u: FluidQuantity::new(w as u32 + 1, h as u32, 0.0, 0.5, hx),
-            v: FluidQuantity::new(w as u32, h as u32 + 1, 0.5, 0.0, hx),
+            d: FluidQuantity::new(w, h, 0.5, 0.5, hx),
+            t: FluidQuantity::new(w, h, 0.5, 0.5, hx),
+            u: FluidQuantity::new(w + 1, h, 0.0, 0.5, hx),
+            v: FluidQuantity::new(w, h + 1, 0.5, 0.0, hx),
             r: vec![0f64; w * h],
             p: vec![0f64; w * h],
             z: vec![0f64; w * h],
@@ -1180,7 +1169,7 @@ impl FluidSolver {
             copy_nonoverlapping(
                 self.t.src_mut().as_mut_ptr(),
                 self.r.as_mut_ptr(),
-                (self.w * self.h) as usize,
+                self.w * self.h,
             );
         }
         self.build_heat_diffusion_matrix(timestep);
@@ -1190,7 +1179,7 @@ impl FluidSolver {
             copy_nonoverlapping(
                 self.p.as_mut_ptr(),
                 self.t.src_mut().as_mut_ptr(),
-                (self.w * self.h) as usize,
+                self.w * self.h,
             );
         }
         self.t.extrapolate();
@@ -1230,17 +1219,14 @@ impl FluidSolver {
     }
 
     fn to_image(&self, render_heat: bool) -> Vec<u8> {
-        let mut rgba = vec![0u8; (self.h * if render_heat { 2 } else { 1 } * self.w * 4) as usize];
+        let mut rgba = vec![0u8; self.h * if render_heat { 2 } else { 1 } * self.w * 4];
 
         for y in 0..self.h {
             for x in 0..self.w {
                 let (idxl, idxr) = if render_heat {
-                    (
-                        4 * (x + y * self.w * 2) as usize,
-                        4 * (x + y * self.w * 2 + self.w) as usize,
-                    )
+                    (4 * (x + y * self.w * 2), 4 * (x + y * self.w * 2 + self.w))
                 } else {
-                    (0, 4 * (x + y * self.w) as usize)
+                    (0, 4 * (x + y * self.w))
                 };
 
                 let volume = self.d.volume(x, y);
@@ -1273,8 +1259,8 @@ impl FluidSolver {
 
 fn main() {
     /* Play with these constants, if you want */
-    let size_x = 256;
-    let size_y = 256;
+    let size_x = 64;
+    let size_y = 64;
     let density_air = 0.1;
     let density_soot = 1.0; /* You can make this smaller to get lighter smoke */
     let diffusion = 0.03;
