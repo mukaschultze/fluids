@@ -4,7 +4,6 @@ use std::f64;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
-use std::iter::Map;
 use std::mem;
 use std::path::Path;
 use std::ptr::copy_nonoverlapping;
@@ -23,7 +22,7 @@ fn rotate(x: &mut f64, y: &mut f64, phi: f64) {
     let tmpX = *x;
     let tmpY = *y;
     *x = f64::cos(phi) * tmpX + f64::sin(phi) * tmpY;
-    *y = -f64::sin(phi) * tmpX + f64::cos(phi) * tmpY;
+    *y = -f64::sin(phi) * tmpY + f64::cos(phi) * tmpY;
 }
 
 fn triangleOccupancy(out1: f64, in1: f64, out2: f64) -> f64 {
@@ -1282,10 +1281,10 @@ fn main() {
     let sizeX = 256;
     let sizeY = 256;
     let densityAir = 0.1;
-    let densitySoot = 7.0; /* You can make this smaller to get lighter smoke */
-    let diffusion = 0.01;
+    let densitySoot = 1.0; /* You can make this smaller to get lighter smoke */
+    let diffusion = 0.03;
     let timestep = 0.005;
-    let renderHeat = false; /* Set this to true to enable heat rendering */
+    let renderHeat = true; /* Set this to true to enable heat rendering */
 
     let mut bodies: Vec<Box<SolidBody>> = Vec::new();
 
@@ -1306,7 +1305,16 @@ fn main() {
 
     while (time < 8.0) {
         for i in 0..4 {
-            solver.addInflow(0.45, 0.2, 0.1, 0.05, 1.0, solver.ambientT(), 0.0, 0.0);
+            solver.addInflow(
+                0.45,
+                0.2,
+                0.1,
+                0.05,
+                1.0,
+                650.0 + solver.ambientT(),
+                0.0,
+                0.0,
+            );
             solver.update(timestep);
             time += timestep;
         }
