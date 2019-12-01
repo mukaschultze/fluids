@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "renderer",
+    # "renderer",
     "variable-density"
 ]
 

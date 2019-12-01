@@ -1,25 +1,12 @@
-// #define _USE_MATH_DEFINES
+extern crate png;
 
-// #include <algorithm>
-// #include <stdint.h>
-// #include <stdio.h>
-// #include <vector>
-// #include <math.h>
-// #include <stack>
-
-// #include "../lodepng/lodepng.h"
-
-// using namespace std;
-
-// template <typename T> int f64::signum(T val) {
-//     return (T(0) < val) - (val < T(0));
-// }
-
-// template <typename T> int nf64::signum(T val) {
-//     return (val < T(0) ? -1 : 1);
-// }
-
+use std::f64;
+use std::fs::File;
+use std::io::BufWriter;
+use std::io::Write;
+use std::iter::Map;
 use std::mem;
+use std::path::Path;
 use std::ptr::copy_nonoverlapping;
 use std::ptr::write_bytes;
 
@@ -426,11 +413,11 @@ impl FluidQuantity {
         let iy = y as u32;
         x -= ix as f64;
         y -= iy as f64;
-        let x0 = u32::max(ix - 1, 0);
+        let x0 = i64::max(ix as i64 - 1, 0) as u32;
         let x1 = ix;
         let x2 = ix + 1;
-        let x3 = u32::min(ix + 2, self._w - 1);
-        let y0 = u32::max(iy - 1, 0);
+        let x3 = i64::min(ix as i64 + 2, self._w as i64 - 1) as u32;
+        let y0 = i64::max(iy as i64 - 1, 0) as u32;
         let y1 = iy;
         let y2 = iy + 1;
         let y3 = u32::min(iy + 2, self._h - 1);
@@ -486,11 +473,9 @@ impl FluidQuantity {
         v: &FluidQuantity,
         bodies: &Vec<Box<SolidBody>>,
     ) {
-        let mut idx = 0usize;
-
         for iy in 0..self._h {
             for ix in 0..self._w {
-                idx += 1;
+                let idx = (iy * self._w + ix) as usize;
                 if (self._cell[idx] == CELL_FLUID) {
                     let mut x = ix as f64 + self._ox;
                     let mut y = iy as f64 + self._oy;
@@ -529,26 +514,21 @@ impl FluidQuantity {
             return;
         }
 
-        let mut idx = 0usize;
-
         for iy in 0..self._h {
             for ix in 0..self._w {
-                idx += 1;
+                let idx = (iy * self._w + ix) as usize;
                 let x = (ix as f64 + self._ox - 0.5) * self._hx;
                 let y = (iy as f64 + self._oy - 0.5) * self._hx;
                 self._phi[idx] = bodies[0].distance(x, y);
-
                 for i in 1..bodies.len() {
                     self._phi[idx] = f64::min(self._phi[idx], bodies[i].distance(x, y));
                 }
             }
         }
 
-        idx = 0;
         for iy in 0..self._h {
             for ix in 0..self._w {
-                idx += 1;
-
+                let idx = (iy * self._w + ix) as usize;
                 let x = (ix as f64 + self._ox) * self._hx;
                 let y = (iy as f64 + self._oy) * self._hx;
 
@@ -706,11 +686,9 @@ impl FluidSolver {
         let cell = self._d.cell();
         let body = self._d.body();
 
-        let mut idx = 0usize;
-
         for y in 0..self._h {
             for x in 0..self._w {
-                idx += 1;
+                let idx = (y * self._w + x) as usize;
 
                 if (cell[idx] == CELL_FLUID) {
                     self._r[idx] = -scale
@@ -799,11 +777,9 @@ impl FluidSolver {
             write_bytes(self._aPlusY.as_mut_ptr(), 0, (self._w * self._h) as usize);
         }
 
-        let mut idx = 0usize;
-
         for y in 0..self._h {
             for x in 0..self._w {
-                idx += 1;
+                let idx = (y * self._w + x) as usize;
 
                 if (cell[idx] != CELL_FLUID) {
                     continue;
@@ -840,11 +816,9 @@ impl FluidSolver {
         let cell = self._d.cell();
         let scale = self._diffusion * timestep * 1.0 / (self._hx * self._hx);
 
-        let mut idx = 0usize;
-
         for y in 0..self._h {
             for x in 0..self._w {
-                idx += 1;
+                let idx = (y * self._w + x) as usize;
 
                 if (cell[idx] != CELL_FLUID) {
                     continue;
@@ -868,10 +842,9 @@ impl FluidSolver {
         const sigma: f64 = 0.25;
 
         let cell = self._d.cell();
-        let mut idx = 0usize;
         for y in 0..self._h {
             for x in 0..self._w {
-                idx += 1;
+                let idx = (y * self._w + x) as usize;
 
                 if (cell[idx] != CELL_FLUID) {
                     continue;
@@ -904,11 +877,9 @@ impl FluidSolver {
     fn applyPreconditioner(&self, dst: &mut Vec<f64>, a: &Vec<f64>) {
         let cell = self._d.cell();
 
-        let mut idx = 0usize;
-
         for y in 0..self._h {
             for x in 0..self._w {
-                idx += 1;
+                let idx = (y * self._w + x) as usize;
 
                 if (cell[idx] != CELL_FLUID) {
                     continue;
@@ -930,12 +901,9 @@ impl FluidSolver {
         }
 
         // TODO: Might bug
-
-        idx = (self._w * self._h - 1) as usize;
-
         for y in self._h - 1..=0 {
             for x in self._w - 1..=0 {
-                idx -= 1;
+                let idx = (y * self._w + x) as usize;
 
                 if (cell[idx] != CELL_FLUID) {
                     continue;
@@ -969,11 +937,9 @@ impl FluidSolver {
     }
 
     fn matrixVectorProduct(&self, dst: &mut Vec<f64>, b: &Vec<f64>) {
-        let mut idx = 0usize;
-
         for y in 0..self._h {
             for x in 0..self._w {
-                idx += 1;
+                let idx = (y * self._w + x) as usize;
                 let mut t = self._aDiag[idx] * b[idx];
                 if (x > 0) {
                     t += self._aPlusX[idx - 1] * b[idx - 1];
@@ -1105,11 +1071,10 @@ impl FluidSolver {
     fn applyPressure(&mut self, timestep: f64) {
         let scale = timestep / self._hx;
         let cell = self._d.cell();
-        let mut idx = 0usize;
 
         for y in 0..self._h {
             for x in 0..self._w {
-                idx += 1;
+                let idx = (y * self._w + x) as usize;
                 if (cell[idx] != CELL_FLUID) {
                     continue;
                 }
@@ -1143,11 +1108,10 @@ impl FluidSolver {
     fn setBoundaryCondition(&mut self) {
         let cell = self._d.cell();
         let body = self._d.body();
-        let mut idx = 0usize;
 
         for y in 0..self._h {
             for x in 0..self._w {
-                idx += 1;
+                let idx = (y * self._w + x) as usize;
                 if (cell[idx] == CELL_SOLID) {
                     let b = &self._bodies[body[idx] as usize];
                     *self._u.at_mut(x, y) =
@@ -1271,34 +1235,113 @@ impl FluidSolver {
         self._tAmb
     }
 
-    //     fn toImage(unsigned char *rgba, bool renderHeat) {
-    //         for (int y = 0; y < _h; y++) {
-    //             for (int x = 0; x < _w; x++) {
-    //                 int idxl, idxr;
-    //                 if (renderHeat) {
-    //                     idxl = 4*(x + y*_w*2);
-    //                     idxr = 4*(x + y*_w*2 + _w);
-    //                 } else
-    //                     idxr = 4*(x + y*_w);
-    //                 double volume = _d.volume(x, y);
-    //                 double shade = (1.0 - _d.at(x, y))*volume;
-    //                 shade = min(max(shade, 0.0), 1.0);
-    //                 rgba[idxr + 0] = (int)(shade*255.0);
-    //                 rgba[idxr + 1] = (int)(shade*255.0);
-    //                 rgba[idxr + 2] = (int)(shade*255.0);
-    //                 rgba[idxr + 3] = 0xFF;
-    //                 if (renderHeat) {
-    //                     double t = (_t.at(x, y) - _tAmb)/700.0;
-    //                     t = min(max(t, 0.0), 1.0);
-    //                     double r = 1.0 + volume*(min(t*4.0, 1.0) - 1.0);
-    //                     double g = 1.0 + volume*(min(t*2.0, 1.0) - 1.0);
-    //                     double b = 1.0 + volume*(max(min(t*4.0 - 3.0, 1.0), 0.0) - 1.0);
-    //                     rgba[idxl + 0] = (int)(r*255.0);
-    //                     rgba[idxl + 1] = (int)(g*255.0);
-    //                     rgba[idxl + 2] = (int)(b*255.0);
-    //                     rgba[idxl + 3] = 0xFF;
-    //                 }
-    //             }
-    //         }
-    //     }
+    fn toImage(&self, renderHeat: bool) -> Vec<u8> {
+        let mut rgba = vec![0u8; (self._h * if renderHeat { 2 } else { 1 } * self._w * 4) as usize];
+
+        for y in 0..self._h {
+            for x in 0..self._w {
+                let (idxl, idxr) = if (renderHeat) {
+                    (
+                        4 * (x + y * self._w * 2) as usize,
+                        4 * (x + y * self._w * 2 + self._w) as usize,
+                    )
+                } else {
+                    (0, 4 * (x + y * self._w) as usize)
+                };
+
+                let volume = self._d.volume(x, y);
+                let mut shade = (1.0 - self._d.at(x, y)) * volume;
+
+                shade = f64::min(f64::max(shade, 0.0), 1.0);
+
+                rgba[idxr + 0] = (shade * 255.0) as u8;
+                rgba[idxr + 1] = (shade * 255.0) as u8;
+                rgba[idxr + 2] = (shade * 255.0) as u8;
+                rgba[idxr + 3] = 0xFF;
+
+                if (renderHeat) {
+                    let mut t = (self._t.at(x, y) - self._tAmb) / 700.0;
+                    t = f64::min(f64::max(t, 0.0), 1.0);
+                    let r = 1.0 + volume * (f64::min(t * 4.0, 1.0) - 1.0);
+                    let g = 1.0 + volume * (f64::min(t * 2.0, 1.0) - 1.0);
+                    let b = 1.0 + volume * (f64::max(f64::min(t * 4.0 - 3.0, 1.0), 0.0) - 1.0);
+                    rgba[idxl + 0] = (r * 255.0) as u8;
+                    rgba[idxl + 1] = (g * 255.0) as u8;
+                    rgba[idxl + 2] = (b * 255.0) as u8;
+                    rgba[idxl + 3] = 0xFF;
+                }
+            }
+        }
+
+        rgba
+    }
+}
+
+fn main() {
+    /* Play with these constants, if you want */
+    let sizeX = 256;
+    let sizeY = 256;
+    let densityAir = 0.1;
+    let densitySoot = 7.0; /* You can make this smaller to get lighter smoke */
+    let diffusion = 0.01;
+    let timestep = 0.005;
+    let renderHeat = false; /* Set this to true to enable heat rendering */
+
+    let mut bodies: Vec<Box<SolidBody>> = Vec::new();
+
+    bodies.push(Box::new(SolidBox::new(SolidBodyFields::new(
+        0.5,
+        0.6,
+        0.9,
+        0.1,
+        f64::consts::PI * 0.25,
+        0.0,
+        0.0,
+        0.1,
+    ))));
+
+    let mut solver = FluidSolver::new(sizeX, sizeY, densityAir, densitySoot, diffusion, bodies);
+    let mut time = 0.0;
+    let mut iterations = 0;
+
+    while (time < 8.0) {
+        for i in 0..4 {
+            solver.addInflow(0.45, 0.2, 0.1, 0.05, 1.0, solver.ambientT(), 0.0, 0.0);
+            solver.update(timestep);
+            time += timestep;
+        }
+        let image = solver.toImage(renderHeat);
+        let path = format!("FrameL{:0>5}.png", iterations);
+
+        iterations += 1;
+
+        screenshot(
+            &path,
+            if renderHeat { sizeX * 2 } else { sizeX } as u32,
+            sizeY as u32,
+            image,
+        );
+        // lodepng_encode32_file(path, image, (renderHeat ? sizeX*2 : sizeX), sizeY);
+
+        for i in 0..solver._bodies.len() {
+            solver._bodies[i].update(timestep);
+        }
+    }
+}
+
+pub fn screenshot(path: &str, width: u32, height: u32, data: Vec<u8>) {
+    println!("Writing file {}", path);
+
+    let file = File::create(Path::new(path)).unwrap();
+    let ref mut w = BufWriter::new(file);
+    let mut encoder = png::Encoder::new(w, width, height);
+
+    encoder.set_color(png::ColorType::RGBA);
+    encoder.set_depth(png::BitDepth::Eight);
+    encoder.set_compression(png::Compression::Default);
+    encoder.set_filter(png::FilterType::NoFilter);
+
+    let mut writer = encoder.write_header().unwrap();
+
+    writer.write_image_data(&data[..]).unwrap();
 }
