@@ -3,7 +3,6 @@ extern crate png;
 use std::f64;
 use std::fs::File;
 use std::io::BufWriter;
-use std::io::Write;
 use std::mem;
 use std::path::Path;
 use std::ptr::copy_nonoverlapping;
@@ -13,23 +12,23 @@ fn length(x: f64, y: f64) -> f64 {
     f64::sqrt(x * x + y * y)
 }
 
-fn cubicPulse(mut x: f64) -> f64 {
+fn cubic_pulse(mut x: f64) -> f64 {
     x = f64::min(f64::abs(x), 1.0);
     1.0 - x * x * (3.0 - 2.0 * x)
 }
 
 fn rotate(x: &mut f64, y: &mut f64, phi: f64) {
-    let tmpX = *x;
-    let tmpY = *y;
-    *x = f64::cos(phi) * tmpX + f64::sin(phi) * tmpY;
-    *y = -f64::sin(phi) * tmpY + f64::cos(phi) * tmpY;
+    let tmp_x = *x;
+    let tmp_y = *y;
+    *x = f64::cos(phi) * tmp_x + f64::sin(phi) * tmp_y;
+    *y = -f64::sin(phi) * tmp_y + f64::cos(phi) * tmp_y;
 }
 
-fn triangleOccupancy(out1: f64, in1: f64, out2: f64) -> f64 {
+fn triangle_occupancy(out1: f64, in1: f64, out2: f64) -> f64 {
     0.5 * in1 * in1 / ((out1 - in1) * (out2 - in1))
 }
 
-fn trapezoidOccupancy(out1: f64, out2: f64, in1: f64, in2: f64) -> f64 {
+fn trapezoid_occupancy(out1: f64, out2: f64, in1: f64, in2: f64) -> f64 {
     0.5 * (-in1 / (out1 - in1) - in2 / (out2 - in2))
 }
 
@@ -44,22 +43,22 @@ fn occupancy(d11: f64, d12: f64, d21: f64, d22: f64) -> f64 {
     match b {
         0x0 => 0.0,
 
-        0x1 => triangleOccupancy(d21, d11, d12),
-        0x2 => triangleOccupancy(d11, d12, d22),
-        0x4 => triangleOccupancy(d12, d22, d21),
-        0x8 => triangleOccupancy(d22, d21, d11),
+        0x1 => triangle_occupancy(d21, d11, d12),
+        0x2 => triangle_occupancy(d11, d12, d22),
+        0x4 => triangle_occupancy(d12, d22, d21),
+        0x8 => triangle_occupancy(d22, d21, d11),
 
-        0xE => 1.0 - triangleOccupancy(-d21, -d11, -d12),
-        0xD => 1.0 - triangleOccupancy(-d11, -d12, -d22),
-        0xB => 1.0 - triangleOccupancy(-d12, -d22, -d21),
-        0x7 => 1.0 - triangleOccupancy(-d22, -d21, -d11),
-        0x3 => trapezoidOccupancy(d21, d22, d11, d12),
-        0x6 => trapezoidOccupancy(d11, d21, d12, d22),
-        0x9 => trapezoidOccupancy(d12, d22, d11, d21),
-        0xC => trapezoidOccupancy(d11, d12, d21, d22),
+        0xE => 1.0 - triangle_occupancy(-d21, -d11, -d12),
+        0xD => 1.0 - triangle_occupancy(-d11, -d12, -d22),
+        0xB => 1.0 - triangle_occupancy(-d12, -d22, -d21),
+        0x7 => 1.0 - triangle_occupancy(-d22, -d21, -d11),
+        0x3 => trapezoid_occupancy(d21, d22, d11, d12),
+        0x6 => trapezoid_occupancy(d11, d21, d12, d22),
+        0x9 => trapezoid_occupancy(d12, d22, d11, d21),
+        0xC => trapezoid_occupancy(d11, d12, d21, d22),
 
-        0x5 => triangleOccupancy(d11, d12, d22) + triangleOccupancy(d22, d21, d11),
-        0xA => triangleOccupancy(d21, d11, d12) + triangleOccupancy(d12, d22, d21),
+        0x5 => triangle_occupancy(d11, d12, d22) + triangle_occupancy(d22, d21, d11),
+        0xA => triangle_occupancy(d21, d11, d12) + triangle_occupancy(d12, d22, d21),
 
         0xF => 1.0,
         _ => 0.0,
@@ -70,83 +69,83 @@ const CELL_FLUID: u8 = 0;
 const CELL_SOLID: u8 = 1;
 
 struct SolidBodyFields {
-    pub _posX: f64,
-    pub _posY: f64,
-    pub _scaleX: f64,
-    pub _scaleY: f64,
-    pub _theta: f64,
-    pub _velX: f64,
-    pub _velY: f64,
-    pub _velTheta: f64,
+    pub pos_x: f64,
+    pub pos_y: f64,
+    pub scale_x: f64,
+    pub scale_y: f64,
+    pub theta: f64,
+    pub vel_x: f64,
+    pub vel_y: f64,
+    pub vel_theta: f64,
 }
 
 impl SolidBodyFields {
     pub fn new(
-        posX: f64,
-        posY: f64,
-        scaleX: f64,
-        scaleY: f64,
+        pos_x: f64,
+        pos_y: f64,
+        scale_x: f64,
+        scale_y: f64,
         theta: f64,
-        velX: f64,
-        velY: f64,
-        velTheta: f64,
+        vel_x: f64,
+        vel_y: f64,
+        vel_theta: f64,
     ) -> Self {
         Self {
-            _posX: posX,
-            _posY: posY,
-            _scaleX: scaleX,
-            _scaleY: scaleY,
-            _theta: theta,
-            _velX: velX,
-            _velY: velY,
-            _velTheta: velTheta,
+            pos_x,
+            pos_y,
+            scale_x,
+            scale_y,
+            theta,
+            vel_x,
+            vel_y,
+            vel_theta,
         }
     }
 }
 
 trait SolidBody {
-    fn getFields(&self) -> &SolidBodyFields;
-    fn getFieldsMut(&mut self) -> &mut SolidBodyFields;
+    fn get_fields(&self) -> &SolidBodyFields;
+    fn get_fields_mut(&mut self) -> &mut SolidBodyFields;
 
     // Private (or kind of)
-    fn globalToLocal(&self, x: &mut f64, y: &mut f64) {
-        *x -= self.getFields()._posX;
-        *y -= self.getFields()._posY;
-        rotate(x, y, -self.getFields()._theta);
-        *x /= self.getFields()._scaleX;
-        *y /= self.getFields()._scaleY;
+    fn global_to_local(&self, x: &mut f64, y: &mut f64) {
+        *x -= self.get_fields().pos_x;
+        *y -= self.get_fields().pos_y;
+        rotate(x, y, -self.get_fields().theta);
+        *x /= self.get_fields().scale_x;
+        *y /= self.get_fields().scale_y;
     }
 
-    fn localToGlobal(&self, x: &mut f64, y: &mut f64) {
-        *x *= self.getFields()._scaleX;
-        *y *= self.getFields()._scaleY;
-        rotate(x, y, self.getFields()._theta);
-        *x += self.getFields()._posX;
-        *y += self.getFields()._posY;
+    fn local_to_global(&self, x: &mut f64, y: &mut f64) {
+        *x *= self.get_fields().scale_x;
+        *y *= self.get_fields().scale_y;
+        rotate(x, y, self.get_fields().theta);
+        *x += self.get_fields().pos_x;
+        *y += self.get_fields().pos_y;
     }
 
     // Public
     fn distance(&self, x: f64, y: f64) -> f64;
-    fn closestSurfacePoint(&self, x: &mut f64, y: &mut f64);
-    fn distanceNormal(&self, nx: &mut f64, ny: &mut f64, x: f64, y: f64);
+    fn closest_surface_point(&self, x: &mut f64, y: &mut f64);
+    fn distance_normal(&self, nx: &mut f64, ny: &mut f64, x: f64, y: f64);
 
-    fn velocityX(&self, x: f64, y: f64) -> f64 {
-        (self.getFields()._posY - y) * self.getFields()._velTheta + self.getFields()._velX
+    fn velocity_x(&self, _x: f64, y: f64) -> f64 {
+        (self.get_fields().pos_y - y) * self.get_fields().vel_theta + self.get_fields().vel_x
     }
 
-    fn velocityY(&self, x: f64, y: f64) -> f64 {
-        (x - self.getFields()._posX) * self.getFields()._velTheta + self.getFields()._velY
+    fn velocity_y(&self, x: f64, _y: f64) -> f64 {
+        (x - self.get_fields().pos_x) * self.get_fields().vel_theta + self.get_fields().vel_y
     }
 
     fn velocity(&self, vx: &mut f64, vy: &mut f64, x: f64, y: f64) {
-        *vx = self.velocityX(x, y);
-        *vy = self.velocityY(x, y);
+        *vx = self.velocity_x(x, y);
+        *vy = self.velocity_y(x, y);
     }
 
     fn update(&mut self, timestep: f64) {
-        self.getFieldsMut()._posX += self.getFields()._velX * timestep;
-        self.getFieldsMut()._posY += self.getFields()._velY * timestep;
-        self.getFieldsMut()._theta += self.getFields()._velTheta * timestep;
+        self.get_fields_mut().pos_x += self.get_fields().vel_x * timestep;
+        self.get_fields_mut().pos_y += self.get_fields().vel_y * timestep;
+        self.get_fields_mut().theta += self.get_fields().vel_theta * timestep;
     }
 }
 
@@ -161,19 +160,19 @@ impl SolidBox {
 }
 
 impl SolidBody for SolidBox {
-    fn getFields(&self) -> &SolidBodyFields {
+    fn get_fields(&self) -> &SolidBodyFields {
         &self.fields
     }
-    fn getFieldsMut(&mut self) -> &mut SolidBodyFields {
+    fn get_fields_mut(&mut self) -> &mut SolidBodyFields {
         &mut self.fields
     }
 
     fn distance(&self, mut x: f64, mut y: f64) -> f64 {
-        x -= self.getFields()._posX;
-        y -= self.getFields()._posY;
-        rotate(&mut x, &mut y, -self.getFields()._theta);
-        let dx = f64::abs(x) - self.getFields()._scaleX * 0.5;
-        let dy = f64::abs(y) - self.getFields()._scaleY * 0.5;
+        x -= self.get_fields().pos_x;
+        y -= self.get_fields().pos_y;
+        rotate(&mut x, &mut y, -self.get_fields().theta);
+        let dx = f64::abs(x) - self.get_fields().scale_x * 0.5;
+        let dy = f64::abs(y) - self.get_fields().scale_y * 0.5;
 
         if dx >= 0.0 || dy >= 0.0 {
             length(f64::max(dx, 0.0), f64::max(dy, 0.0))
@@ -182,31 +181,31 @@ impl SolidBody for SolidBox {
         }
     }
 
-    fn closestSurfacePoint(&self, x: &mut f64, y: &mut f64) {
-        *x -= self.getFields()._posX;
-        *y -= self.getFields()._posY;
-        rotate(x, y, -self.getFields()._theta);
-        let dx = f64::abs(*x) - self.getFields()._scaleX * 0.5;
-        let dy = f64::abs(*y) - self.getFields()._scaleY * 0.5;
+    fn closest_surface_point(&self, x: &mut f64, y: &mut f64) {
+        *x -= self.get_fields().pos_x;
+        *y -= self.get_fields().pos_y;
+        rotate(x, y, -self.get_fields().theta);
+        let dx = f64::abs(*x) - self.get_fields().scale_x * 0.5;
+        let dy = f64::abs(*y) - self.get_fields().scale_y * 0.5;
 
         if dx > dy {
-            *x = f64::signum(*x) * 0.5 * self.getFields()._scaleX;
+            *x = f64::signum(*x) * 0.5 * self.get_fields().scale_x;
         } else {
-            *y = f64::signum(*y) * 0.5 * self.getFields()._scaleY;
+            *y = f64::signum(*y) * 0.5 * self.get_fields().scale_y;
         }
 
-        rotate(x, y, self.getFields()._theta);
-        *x += self.getFields()._posX;
-        *y += self.getFields()._posY;
+        rotate(x, y, self.get_fields().theta);
+        *x += self.get_fields().pos_x;
+        *y += self.get_fields().pos_y;
     }
 
-    fn distanceNormal(&self, nx: &mut f64, ny: &mut f64, mut x: f64, mut y: f64) {
-        x -= self.getFields()._posX;
-        y -= self.getFields()._posY;
-        rotate(&mut x, &mut y, -self.getFields()._theta);
+    fn distance_normal(&self, nx: &mut f64, ny: &mut f64, mut x: f64, mut y: f64) {
+        x -= self.get_fields().pos_x;
+        y -= self.get_fields().pos_y;
+        rotate(&mut x, &mut y, -self.get_fields().theta);
 
-        if f64::abs(x) - self.getFields()._scaleX * 0.5
-            > f64::abs(y) - self.getFields()._scaleY * 0.5
+        if f64::abs(x) - self.get_fields().scale_x * 0.5
+            > f64::abs(y) - self.get_fields().scale_y * 0.5
         {
             *nx = f64::signum(x);
             *ny = 0.0;
@@ -215,7 +214,7 @@ impl SolidBody for SolidBox {
             *ny = f64::signum(y);
         }
 
-        rotate(nx, ny, self.getFields()._theta);
+        rotate(nx, ny, self.get_fields().theta);
     }
 }
 
@@ -230,20 +229,20 @@ impl SolidSphere {
 }
 
 impl SolidBody for SolidSphere {
-    fn getFields(&self) -> &SolidBodyFields {
+    fn get_fields(&self) -> &SolidBodyFields {
         &self.fields
     }
-    fn getFieldsMut(&mut self) -> &mut SolidBodyFields {
+    fn get_fields_mut(&mut self) -> &mut SolidBodyFields {
         &mut self.fields
     }
 
     fn distance(&self, x: f64, y: f64) -> f64 {
-        length(x - self.getFields()._posX, y - self.getFields()._posY)
-            - self.getFields()._scaleX * 0.5
+        length(x - self.get_fields().pos_x, y - self.get_fields().pos_y)
+            - self.get_fields().scale_x * 0.5
     }
 
-    fn closestSurfacePoint(&self, x: &mut f64, y: &mut f64) {
-        self.globalToLocal(x, y);
+    fn closest_surface_point(&self, x: &mut f64, y: &mut f64) {
+        self.global_to_local(x, y);
         let r = length(*x, *y);
         if r < 1e-4f64 {
             *x = 0.5;
@@ -253,12 +252,12 @@ impl SolidBody for SolidSphere {
             *y /= 2.0 * r;
         }
 
-        self.localToGlobal(x, y);
+        self.local_to_global(x, y);
     }
 
-    fn distanceNormal(&self, nx: &mut f64, ny: &mut f64, mut x: f64, mut y: f64) {
-        x -= self.getFields()._posX;
-        y -= self.getFields()._posY;
+    fn distance_normal(&self, nx: &mut f64, ny: &mut f64, mut x: f64, mut y: f64) {
+        x -= self.get_fields().pos_x;
+        y -= self.get_fields().pos_y;
         let r = length(x, y);
         if r < 1e-4f64 {
             *nx = 1.0;
@@ -272,21 +271,21 @@ impl SolidBody for SolidSphere {
 
 #[derive(Clone)]
 struct FluidQuantity {
-    _src: Vec<f64>,
-    _dst: Vec<f64>,
-    _phi: Vec<f64>,
-    _volume: Vec<f64>,
-    _normalX: Vec<f64>,
-    _normalY: Vec<f64>,
-    _cell: Vec<u8>,
-    _body: Vec<u8>,
-    _mask: Vec<u8>,
+    src: Vec<f64>,
+    dst: Vec<f64>,
+    phi: Vec<f64>,
+    volume: Vec<f64>,
+    normalX: Vec<f64>,
+    normalY: Vec<f64>,
+    cell: Vec<u8>,
+    body: Vec<u8>,
+    mask: Vec<u8>,
 
-    _w: u32,
-    _h: u32,
-    _ox: f64,
-    _oy: f64,
-    _hx: f64,
+    w: u32,
+    h: u32,
+    ox: f64,
+    oy: f64,
+    hx: f64,
 }
 
 fn lerp(a: f64, b: f64, x: f64) -> f64 {
@@ -296,19 +295,19 @@ fn lerp(a: f64, b: f64, x: f64) -> f64 {
 fn cerp(a: f64, b: f64, c: f64, d: f64, x: f64) -> f64 {
     let xsq = x * x;
     let xcu = xsq * x;
-    let minV = f64::min(a, f64::min(b, f64::min(c, d)));
-    let maxV = f64::max(a, f64::max(b, f64::max(c, d)));
+    let min_v = f64::min(a, f64::min(b, f64::min(c, d)));
+    let max_v = f64::max(a, f64::max(b, f64::max(c, d)));
 
     let t = a * (0.0 - 0.5 * x + 1.0 * xsq - 0.5 * xcu)
         + b * (1.0 + 0.0 * x - 2.5 * xsq + 1.5 * xcu)
         + c * (0.0 + 0.5 * x + 2.0 * xsq - 1.5 * xcu)
         + d * (0.0 + 0.0 * x - 0.5 * xsq + 0.5 * xcu);
 
-    f64::min(f64::max(t, minV), maxV)
+    f64::min(f64::max(t, min_v), max_v)
 }
 
 impl FluidQuantity {
-    fn rungeKutta3(
+    fn runge_kutta_3(
         &self,
         x: &mut f64,
         y: &mut f64,
@@ -316,82 +315,82 @@ impl FluidQuantity {
         u: &FluidQuantity,
         v: &FluidQuantity,
     ) {
-        let firstU = u.lerp(*x, *y) / self._hx;
-        let firstV = v.lerp(*x, *y) / self._hx;
+        let first_u = u.lerp(*x, *y) / self.hx;
+        let first_v = v.lerp(*x, *y) / self.hx;
 
-        let midX = *x - 0.5 * timestep * firstU;
-        let midY = *y - 0.5 * timestep * firstV;
+        let mid_x = *x - 0.5 * timestep * first_u;
+        let mid_y = *y - 0.5 * timestep * first_v;
 
-        let midU = u.lerp(midX, midY) / self._hx;
-        let midV = v.lerp(midX, midY) / self._hx;
+        let mid_u = u.lerp(mid_x, mid_y) / self.hx;
+        let mid_v = v.lerp(mid_x, mid_y) / self.hx;
 
-        let lastX = *x - 0.75 * timestep * midU;
-        let lastY = *y - 0.75 * timestep * midV;
+        let last_x = *x - 0.75 * timestep * mid_u;
+        let last_y = *y - 0.75 * timestep * mid_v;
 
-        let lastU = u.lerp(lastX, lastY);
-        let lastV = v.lerp(lastX, lastY);
+        let last_u = u.lerp(last_x, last_y);
+        let last_v = v.lerp(last_x, last_y);
 
-        *x -= timestep * ((2.0 / 9.0) * firstU + (3.0 / 9.0) * midU + (4.0 / 9.0) * lastU);
-        *y -= timestep * ((2.0 / 9.0) * firstV + (3.0 / 9.0) * midV + (4.0 / 9.0) * lastV);
+        *x -= timestep * ((2.0 / 9.0) * first_u + (3.0 / 9.0) * mid_u + (4.0 / 9.0) * last_u);
+        *y -= timestep * ((2.0 / 9.0) * first_v + (3.0 / 9.0) * mid_v + (4.0 / 9.0) * last_v);
     }
 
     fn new(w: u32, h: u32, ox: f64, oy: f64, hx: f64) -> Self {
         Self {
-            _src: vec![0f64; (w * h) as usize],
-            _dst: vec![0f64; (w * h) as usize],
-            _phi: vec![0f64; ((w + 1) * (h + 1)) as usize],
-            _volume: vec![1f64; (w * h) as usize],
-            _normalX: vec![0f64; (w * h) as usize],
-            _normalY: vec![0f64; (w * h) as usize],
-            _cell: vec![CELL_FLUID; (w * h) as usize],
-            _body: vec![0u8; (w * h) as usize],
-            _mask: vec![0u8; (w * h) as usize],
+            src: vec![0f64; (w * h) as usize],
+            dst: vec![0f64; (w * h) as usize],
+            phi: vec![0f64; ((w + 1) * (h + 1)) as usize],
+            volume: vec![1f64; (w * h) as usize],
+            normalX: vec![0f64; (w * h) as usize],
+            normalY: vec![0f64; (w * h) as usize],
+            cell: vec![CELL_FLUID; (w * h) as usize],
+            body: vec![0u8; (w * h) as usize],
+            mask: vec![0u8; (w * h) as usize],
 
-            _w: w,
-            _h: h,
-            _ox: ox,
-            _oy: oy,
-            _hx: hx,
+            w,
+            h,
+            ox,
+            oy,
+            hx,
         }
     }
 
     fn flip(&mut self) {
-        mem::swap(&mut self._src, &mut self._dst);
+        mem::swap(&mut self.src, &mut self.dst);
     }
 
     fn src(&self) -> &Vec<f64> {
-        &self._src
+        &self.src
     }
 
     fn src_mut(&mut self) -> &mut Vec<f64> {
-        &mut self._src
+        &mut self.src
     }
 
     fn cell(&self) -> &Vec<u8> {
-        &self._cell
+        &self.cell
     }
     fn body(&self) -> &Vec<u8> {
-        &self._body
+        &self.body
     }
     fn idx(&self, x: u32, y: u32) -> u32 {
-        x + y * self._w
+        x + y * self.w
     }
 
     fn at(&self, x: u32, y: u32) -> f64 {
-        self._src[(x + y * self._w) as usize]
+        self.src[(x + y * self.w) as usize]
     }
 
     fn at_mut(&mut self, x: u32, y: u32) -> &mut f64 {
-        &mut self._src[(x + y * self._w) as usize]
+        &mut self.src[(x + y * self.w) as usize]
     }
 
     fn volume(&self, x: u32, y: u32) -> f64 {
-        self._volume[(x + y * self._w) as usize]
+        self.volume[(x + y * self.w) as usize]
     }
 
     fn lerp(&self, mut x: f64, mut y: f64) -> f64 {
-        x = f64::min(f64::max(x - self._ox, 0.0), self._w as f64 - 1.001);
-        y = f64::min(f64::max(y - self._oy, 0.0), self._h as f64 - 1.001);
+        x = f64::min(f64::max(x - self.ox, 0.0), self.w as f64 - 1.001);
+        y = f64::min(f64::max(y - self.oy, 0.0), self.h as f64 - 1.001);
         let ix = x as u32;
         let iy = y as u32;
         x -= ix as f64;
@@ -406,8 +405,8 @@ impl FluidQuantity {
     }
 
     fn cerp(&self, mut x: f64, mut y: f64) -> f64 {
-        x = f64::min(f64::max(x - self._ox, 0.0), self._w as f64 - 1.001);
-        y = f64::min(f64::max(y - self._oy, 0.0), self._h as f64 - 1.001);
+        x = f64::min(f64::max(x - self.ox, 0.0), self.w as f64 - 1.001);
+        y = f64::min(f64::max(y - self.oy, 0.0), self.h as f64 - 1.001);
         let ix = x as u32;
         let iy = y as u32;
         x -= ix as f64;
@@ -415,11 +414,11 @@ impl FluidQuantity {
         let x0 = i64::max(ix as i64 - 1, 0) as u32;
         let x1 = ix;
         let x2 = ix + 1;
-        let x3 = i64::min(ix as i64 + 2, self._w as i64 - 1) as u32;
+        let x3 = i64::min(ix as i64 + 2, self.w as i64 - 1) as u32;
         let y0 = i64::max(iy as i64 - 1, 0) as u32;
         let y1 = iy;
         let y2 = iy + 1;
-        let y3 = u32::min(iy + 2, self._h - 1);
+        let y3 = u32::min(iy + 2, self.h - 1);
 
         let q0 = cerp(
             self.at(x0, y0),
@@ -452,16 +451,16 @@ impl FluidQuantity {
         cerp(q0, q1, q2, q3, y)
     }
 
-    fn backProject(&self, x: &mut f64, y: &mut f64, bodies: &Vec<Box<dyn SolidBody>>) {
-        let rx = u32::min(u32::max((*x - self._ox) as u32, 0), self._w - 1);
-        let ry = u32::min(u32::max((*y - self._oy) as u32, 0), self._h - 1);
+    fn back_project(&self, x: &mut f64, y: &mut f64, bodies: &Vec<Box<dyn SolidBody>>) {
+        let rx = u32::min(u32::max((*x - self.ox) as u32, 0), self.w - 1);
+        let ry = u32::min(u32::max((*y - self.oy) as u32, 0), self.h - 1);
 
-        if self._cell[(rx + ry * self._w) as usize] != CELL_FLUID {
-            *x = (*x - self._ox) * self._hx;
-            *y = (*y - self._oy) * self._hx;
-            bodies[self._body[(rx + ry * self._w) as usize] as usize].closestSurfacePoint(x, y);
-            *x = *x / self._hx + self._ox;
-            *y = *y / self._hx + self._oy;
+        if self.cell[(rx + ry * self.w) as usize] != CELL_FLUID {
+            *x = (*x - self.ox) * self.hx;
+            *y = (*y - self.oy) * self.hx;
+            bodies[self.body[(rx + ry * self.w) as usize] as usize].closest_surface_point(x, y);
+            *x = *x / self.hx + self.ox;
+            *y = *y / self.hx + self.oy;
         }
     }
 
@@ -470,101 +469,101 @@ impl FluidQuantity {
         timestep: f64,
         u: &FluidQuantity,
         v: &FluidQuantity,
-        bodies: &Vec<Box<SolidBody>>,
+        bodies: &Vec<Box<dyn SolidBody>>,
     ) {
-        for iy in 0..self._h {
-            for ix in 0..self._w {
-                let idx = (iy * self._w + ix) as usize;
-                if (self._cell[idx] == CELL_FLUID) {
-                    let mut x = ix as f64 + self._ox;
-                    let mut y = iy as f64 + self._oy;
-                    self.rungeKutta3(&mut x, &mut y, timestep, u, v);
-                    self.backProject(&mut x, &mut y, bodies);
-                    self._dst[idx] = self.cerp(x, y);
+        for iy in 0..self.h {
+            for ix in 0..self.w {
+                let idx = (iy * self.w + ix) as usize;
+                if self.cell[idx] == CELL_FLUID {
+                    let mut x = ix as f64 + self.ox;
+                    let mut y = iy as f64 + self.oy;
+                    self.runge_kutta_3(&mut x, &mut y, timestep, u, v);
+                    self.back_project(&mut x, &mut y, bodies);
+                    self.dst[idx] = self.cerp(x, y);
                 }
             }
         }
     }
 
-    fn addInflow(&mut self, x0: f64, y0: f64, x1: f64, y1: f64, v: f64) {
-        let ix0 = (x0 / self._hx - self._ox) as u32;
-        let iy0 = (y0 / self._hx - self._oy) as u32;
-        let ix1 = (x1 / self._hx - self._ox) as u32;
-        let iy1 = (y1 / self._hx - self._oy) as u32;
+    fn add_inflow(&mut self, x0: f64, y0: f64, x1: f64, y1: f64, v: f64) {
+        let ix0 = (x0 / self.hx - self.ox) as u32;
+        let iy0 = (y0 / self.hx - self.oy) as u32;
+        let ix1 = (x1 / self.hx - self.ox) as u32;
+        let iy1 = (y1 / self.hx - self.oy) as u32;
         // TODO: Might bug
-        for y in u32::max(iy0, 0)..u32::min(iy1, self._h) {
-            for x in u32::max(ix0, 0)..u32::min(ix1, self._h) {
+        for y in u32::max(iy0, 0)..u32::min(iy1, self.h) {
+            for x in u32::max(ix0, 0)..u32::min(ix1, self.h) {
                 let l = length(
-                    (2.0 * (x as f64 + 0.5) * self._hx - (x0 + x1)) / (x1 - x0),
-                    (2.0 * (y as f64 + 0.5) * self._hx - (y0 + y1)) / (y1 - y0),
+                    (2.0 * (x as f64 + 0.5) * self.hx - (x0 + x1)) / (x1 - x0),
+                    (2.0 * (y as f64 + 0.5) * self.hx - (y0 + y1)) / (y1 - y0),
                 );
 
-                let vi = cubicPulse(l) * v;
+                let vi = cubic_pulse(l) * v;
 
-                if f64::abs(self._src[(x + y * self._w) as usize]) < f64::abs(vi) {
-                    self._src[(x + y * self._w) as usize] = vi;
+                if f64::abs(self.src[(x + y * self.w) as usize]) < f64::abs(vi) {
+                    self.src[(x + y * self.w) as usize] = vi;
                 }
             }
         }
     }
 
-    fn fillSolidFields(&mut self, bodies: &Vec<Box<dyn SolidBody>>) {
+    fn fill_solid_fields(&mut self, bodies: &Vec<Box<dyn SolidBody>>) {
         if bodies.is_empty() {
             return;
         }
 
-        for iy in 0..self._h {
-            for ix in 0..self._w {
-                let idx = (iy * self._w + ix) as usize;
-                let x = (ix as f64 + self._ox - 0.5) * self._hx;
-                let y = (iy as f64 + self._oy - 0.5) * self._hx;
-                self._phi[idx] = bodies[0].distance(x, y);
+        for iy in 0..self.h {
+            for ix in 0..self.w {
+                let idx = (iy * self.w + ix) as usize;
+                let x = (ix as f64 + self.ox - 0.5) * self.hx;
+                let y = (iy as f64 + self.oy - 0.5) * self.hx;
+                self.phi[idx] = bodies[0].distance(x, y);
                 for i in 1..bodies.len() {
-                    self._phi[idx] = f64::min(self._phi[idx], bodies[i].distance(x, y));
+                    self.phi[idx] = f64::min(self.phi[idx], bodies[i].distance(x, y));
                 }
             }
         }
 
-        for iy in 0..self._h {
-            for ix in 0..self._w {
-                let idx = (iy * self._w + ix) as usize;
-                let x = (ix as f64 + self._ox) * self._hx;
-                let y = (iy as f64 + self._oy) * self._hx;
+        for iy in 0..self.h {
+            for ix in 0..self.w {
+                let idx = (iy * self.w + ix) as usize;
+                let x = (ix as f64 + self.ox) * self.hx;
+                let y = (iy as f64 + self.oy) * self.hx;
 
-                self._body[idx] = 0;
+                self.body[idx] = 0;
 
                 let mut d = bodies[0].distance(x, y);
 
                 for i in 0..bodies.len() {
                     let id = bodies[i].distance(x, y);
                     if id < d {
-                        self._body[idx] = i as u8;
+                        self.body[idx] = i as u8;
                         d = id;
                     }
                 }
 
-                let idxp = ix + iy * (self._w + 1);
+                let idxp = ix + iy * (self.w + 1);
 
-                self._volume[idx] = 1.0
+                self.volume[idx] = 1.0
                     - occupancy(
-                        self._phi[(idxp) as usize],
-                        self._phi[(idxp + 1) as usize],
-                        self._phi[(idxp + self._w + 1) as usize],
-                        self._phi[(idxp + self._w + 2) as usize],
+                        self.phi[(idxp) as usize],
+                        self.phi[(idxp + 1) as usize],
+                        self.phi[(idxp + self.w + 1) as usize],
+                        self.phi[(idxp + self.w + 2) as usize],
                     );
 
-                if self._volume[idx] < 0.01 {
-                    self._volume[idx] = 0.0;
+                if self.volume[idx] < 0.01 {
+                    self.volume[idx] = 0.0;
                 }
 
-                bodies[self._body[idx as usize] as usize].distanceNormal(
-                    &mut self._normalX[idx as usize],
-                    &mut self._normalY[idx as usize],
+                bodies[self.body[idx as usize] as usize].distance_normal(
+                    &mut self.normalX[idx as usize],
+                    &mut self.normalY[idx as usize],
                     x,
                     y,
                 );
 
-                self._cell[idx] = if self._volume[idx as usize] == 0.0 {
+                self.cell[idx] = if self.volume[idx as usize] == 0.0 {
                     CELL_SOLID
                 } else {
                     CELL_FLUID
@@ -573,58 +572,58 @@ impl FluidQuantity {
         }
     }
 
-    fn fillSolidMask(&mut self) {
-        for y in 1..self._h - 1 {
-            for x in 1..self._w - 1 {
-                let idx = (x + y * self._w) as usize;
+    fn fill_solid_mask(&mut self) {
+        for y in 1..self.h - 1 {
+            for x in 1..self.w - 1 {
+                let idx = (x + y * self.w) as usize;
 
-                if self._cell[idx] == CELL_FLUID {
+                if self.cell[idx] == CELL_FLUID {
                     continue;
                 }
-                let nx = self._normalX[idx];
-                let ny = self._normalY[idx];
+                let nx = self.normalX[idx];
+                let ny = self.normalY[idx];
 
-                self._mask[idx] = 0;
+                self.mask[idx] = 0;
 
-                if nx != 0.0 && self._cell[idx + f64::signum(nx) as usize] != CELL_FLUID {
-                    self._mask[idx] |= 1;
+                if nx != 0.0 && self.cell[idx + f64::signum(nx) as usize] != CELL_FLUID {
+                    self.mask[idx] |= 1;
                 }
                 if ny != 0.0
-                    && self._cell[idx + (f64::signum(ny) as u32 * self._w) as usize] != CELL_FLUID
+                    && self.cell[idx + (f64::signum(ny) as u32 * self.w) as usize] != CELL_FLUID
                 {
-                    self._mask[idx] |= 2;
+                    self.mask[idx] |= 2;
                 }
             }
         }
     }
 
-    fn extrapolateNormal(&self, idx: u32) -> f64 {
-        let nx = self._normalX[idx as usize];
-        let ny = self._normalY[idx as usize];
-        let srcX = self._src[(idx + f64::signum(nx) as u32) as usize];
-        let srcY = self._src[(idx + f64::signum(ny) as u32 * self._w) as usize];
+    fn extrapolate_normal(&self, idx: u32) -> f64 {
+        let nx = self.normalX[idx as usize];
+        let ny = self.normalY[idx as usize];
+        let src_x = self.src[(idx + f64::signum(nx) as u32) as usize];
+        let src_y = self.src[(idx + f64::signum(ny) as u32 * self.w) as usize];
 
-        (f64::abs(nx) * srcX + f64::abs(ny) * srcY) / (f64::abs(nx) + f64::abs(ny))
+        (f64::abs(nx) * src_x + f64::abs(ny) * src_y) / (f64::abs(nx) + f64::abs(ny))
     }
 
-    fn freeNeighbour(&mut self, idx: u32, border: &mut Vec<u32>, mask: u8) {
-        self._mask[idx as usize] &= !mask;
+    fn free_neighbour(&mut self, idx: u32, border: &mut Vec<u32>, mask: u8) {
+        self.mask[idx as usize] &= !mask;
 
-        if self._cell[idx as usize] != CELL_FLUID && self._mask[idx as usize] == 0 {
+        if self.cell[idx as usize] != CELL_FLUID && self.mask[idx as usize] == 0 {
             border.push(idx);
         }
     }
 
     fn extrapolate(&mut self) {
-        self.fillSolidMask();
+        self.fill_solid_mask();
 
         let mut border = Vec::new();
 
-        for y in 1..self._h - 1 {
-            for x in 1..self._w {
-                let idx = x + y * self._w;
+        for y in 1..self.h - 1 {
+            for x in 1..self.w {
+                let idx = x + y * self.w;
 
-                if self._cell[idx as usize] != CELL_FLUID && self._mask[idx as usize] == 0 {
+                if self.cell[idx as usize] != CELL_FLUID && self.mask[idx as usize] == 0 {
                     border.push(idx);
                 }
             }
@@ -633,99 +632,95 @@ impl FluidQuantity {
         while !border.is_empty() {
             let idx = border.pop().unwrap();
 
-            self._src[idx as usize] = self.extrapolateNormal(idx);
+            self.src[idx as usize] = self.extrapolate_normal(idx);
 
-            if self._normalX[(idx - 1) as usize] > 0.0 {
-                self.freeNeighbour(idx - 1, &mut border, 1);
+            if self.normalX[(idx - 1) as usize] > 0.0 {
+                self.free_neighbour(idx - 1, &mut border, 1);
             }
-            if self._normalX[(idx + 1) as usize] < 0.0 {
-                self.freeNeighbour(idx + 1, &mut border, 1);
+            if self.normalX[(idx + 1) as usize] < 0.0 {
+                self.free_neighbour(idx + 1, &mut border, 1);
             }
-            if self._normalY[(idx - self._w) as usize] > 0.0 {
-                self.freeNeighbour(idx - self._w, &mut border, 2);
+            if self.normalY[(idx - self.w) as usize] > 0.0 {
+                self.free_neighbour(idx - self.w, &mut border, 2);
             }
-            if self._normalY[(idx + self._w) as usize] < 0.0 {
-                self.freeNeighbour(idx + self._w, &mut border, 2);
+            if self.normalY[(idx + self.w) as usize] < 0.0 {
+                self.free_neighbour(idx + self.w, &mut border, 2);
             }
         }
     }
 }
 
 struct FluidSolver {
-    _d: FluidQuantity,
-    _t: FluidQuantity,
-    _u: FluidQuantity,
-    _v: FluidQuantity,
+    d: FluidQuantity,
+    t: FluidQuantity,
+    u: FluidQuantity,
+    v: FluidQuantity,
     /* Densities at staggered grid locations */
-    _uDensity: Vec<f64>,
-    _vDensity: Vec<f64>,
-    _w: u32,
-    _h: u32,
-    _hx: f64,
-    _densityAir: f64,
-    _densitySoot: f64,
-    _diffusion: f64,
-    _r: Vec<f64>,
-    _p: Vec<f64>,
-    _z: Vec<f64>,
-    _s: Vec<f64>,
-    _precon: Vec<f64>,
-    _aDiag: Vec<f64>,
-    _aPlusX: Vec<f64>,
-    _aPlusY: Vec<f64>,
-    _tAmb: f64,
-    _g: f64,
-    _bodies: Vec<Box<SolidBody>>,
+    u_density: Vec<f64>,
+    v_density: Vec<f64>,
+    w: u32,
+    h: u32,
+    hx: f64,
+    density_air: f64,
+    density_soot: f64,
+    diffusion: f64,
+    r: Vec<f64>,
+    p: Vec<f64>,
+    z: Vec<f64>,
+    s: Vec<f64>,
+    precon: Vec<f64>,
+    a_diag: Vec<f64>,
+    a_plus_x: Vec<f64>,
+    a_plus_y: Vec<f64>,
+    t_amb: f64,
+    g: f64,
+    bodies: Vec<Box<dyn SolidBody>>,
 }
 
 impl FluidSolver {
-    fn buildRhs(&mut self) {
-        let scale = 1.0 / self._hx;
+    fn build_rhs(&mut self) {
+        let scale = 1.0 / self.hx;
 
-        let cell = self._d.cell();
-        let body = self._d.body();
+        let cell = self.d.cell();
+        let body = self.d.body();
 
-        for y in 0..self._h {
-            for x in 0..self._w {
-                let idx = (y * self._w + x) as usize;
+        for y in 0..self.h {
+            for x in 0..self.w {
+                let idx = (y * self.w + x) as usize;
 
-                if (cell[idx] == CELL_FLUID) {
-                    self._r[idx] = -scale
-                        * (self._u.volume(x + 1, y) * self._u.at(x + 1, y)
-                            - self._u.volume(x, y) * self._u.at(x, y)
-                            + self._v.volume(x, y + 1) * self._v.at(x, y + 1)
-                            - self._v.volume(x, y) * self._v.at(x, y));
-                    let vol = self._d.volume(x, y);
-                    if self._bodies.is_empty() {
+                if cell[idx] == CELL_FLUID {
+                    self.r[idx] = -scale
+                        * (self.u.volume(x + 1, y) * self.u.at(x + 1, y)
+                            - self.u.volume(x, y) * self.u.at(x, y)
+                            + self.v.volume(x, y + 1) * self.v.at(x, y + 1)
+                            - self.v.volume(x, y) * self.v.at(x, y));
+                    let vol = self.d.volume(x, y);
+                    if self.bodies.is_empty() {
                         continue;
                     }
 
-                    if (x > 0) {
-                        self._r[idx] -= (self._u.volume(x, y) - vol)
-                            * self._bodies[body[idx - 1] as usize]
-                                .velocityX(x as f64 * self._hx, (y as f64 + 0.5) * self._hx);
+                    if x > 0 {
+                        self.r[idx] -= (self.u.volume(x, y) - vol)
+                            * self.bodies[body[idx - 1] as usize]
+                                .velocity_x(x as f64 * self.hx, (y as f64 + 0.5) * self.hx);
                     }
-                    if (y > 0) {
-                        self._r[idx] -= (self._v.volume(x, y) - vol)
-                            * self._bodies[body[idx - self._w as usize] as usize]
-                                .velocityY((x as f64 + 0.5) * self._hx, y as f64 * self._hx);
+                    if y > 0 {
+                        self.r[idx] -= (self.v.volume(x, y) - vol)
+                            * self.bodies[body[idx - self.w as usize] as usize]
+                                .velocity_y((x as f64 + 0.5) * self.hx, y as f64 * self.hx);
                     }
-                    if (x < self._w - 1) {
-                        self._r[idx] += (self._u.volume(x + 1, y) - vol)
-                            * self._bodies[body[idx + 1] as usize].velocityX(
-                                (x as f64 + 1.0) * self._hx,
-                                (y as f64 + 0.5) * self._hx,
-                            );
+                    if x < self.w - 1 {
+                        self.r[idx] += (self.u.volume(x + 1, y) - vol)
+                            * self.bodies[body[idx + 1] as usize]
+                                .velocity_x((x as f64 + 1.0) * self.hx, (y as f64 + 0.5) * self.hx);
                     }
-                    if (y < self._h - 1) {
-                        self._r[idx] += (self._v.volume(x, y + 1) - vol)
-                            * self._bodies[body[idx + self._w as usize] as usize].velocityY(
-                                (x as f64 + 0.5) * self._hx,
-                                (y as f64 + 1.0) * self._hx,
-                            );
+                    if y < self.h - 1 {
+                        self.r[idx] += (self.v.volume(x, y + 1) - vol)
+                            * self.bodies[body[idx + self.w as usize] as usize]
+                                .velocity_y((x as f64 + 0.5) * self.hx, (y as f64 + 1.0) * self.hx);
                     }
                 } else {
-                    self._r[idx] = 0.0;
+                    self.r[idx] = 0.0;
                 }
             }
         }
@@ -734,31 +729,31 @@ impl FluidSolver {
     /* Computes densities at the staggered grid locations as a function of
      * temperature and smoke concentration.
      */
-    fn computeDensities(&mut self) {
-        let alpha = (self._densitySoot - self._densityAir) / self._densityAir;
+    fn compute_densities(&mut self) {
+        let alpha = (self.density_soot - self.density_air) / self.density_air;
 
         unsafe {
             write_bytes(
-                self._uDensity.as_mut_ptr(),
+                self.u_density.as_mut_ptr(),
                 0,
-                ((self._w + 1) * self._h) as usize,
+                ((self.w + 1) * self.h) as usize,
             );
             write_bytes(
-                self._vDensity.as_mut_ptr(),
+                self.v_density.as_mut_ptr(),
                 0,
-                (self._w * (self._h + 1)) as usize,
+                (self.w * (self.h + 1)) as usize,
             );
         }
 
-        for y in 0..self._h {
-            for x in 0..self._w {
-                let mut density = self._densityAir * self._tAmb / self._t.at(x, y)
-                    * (1.0 + alpha * self._d.at(x, y));
-                density = f64::max(density, 0.05 * self._densityAir); /* Clamp dangerously low densities */
-                self._uDensity[self._u.idx(x, y) as usize] += 0.5 * density;
-                self._vDensity[self._v.idx(x, y) as usize] += 0.5 * density;
-                self._uDensity[self._u.idx(x + 1, y) as usize] += 0.5 * density;
-                self._vDensity[self._v.idx(x, y + 1) as usize] += 0.5 * density;
+        for y in 0..self.h {
+            for x in 0..self.w {
+                let mut density = self.density_air * self.t_amb / self.t.at(x, y)
+                    * (1.0 + alpha * self.d.at(x, y));
+                density = f64::max(density, 0.05 * self.density_air); /* Clamp dangerously low densities */
+                self.u_density[self.u.idx(x, y) as usize] += 0.5 * density;
+                self.v_density[self.v.idx(x, y) as usize] += 0.5 * density;
+                self.u_density[self.u.idx(x + 1, y) as usize] += 0.5 * density;
+                self.v_density[self.v.idx(x, y + 1) as usize] += 0.5 * density;
             }
         }
     }
@@ -766,168 +761,168 @@ impl FluidSolver {
     /* Instead of constant density per cell, the entries must now be modified
      * to account for variable density at individual grid cells.
      */
-    fn buildPressureMatrix(&mut self, timestep: f64) {
-        let scale = timestep / (self._hx * self._hx);
-        let cell = self._d.cell();
+    fn build_pressure_matrix(&mut self, timestep: f64) {
+        let scale = timestep / (self.hx * self.hx);
+        let cell = self.d.cell();
 
         unsafe {
-            write_bytes(self._aDiag.as_mut_ptr(), 0, (self._w * self._h) as usize);
-            write_bytes(self._aPlusX.as_mut_ptr(), 0, (self._w * self._h) as usize);
-            write_bytes(self._aPlusY.as_mut_ptr(), 0, (self._w * self._h) as usize);
+            write_bytes(self.a_diag.as_mut_ptr(), 0, (self.w * self.h) as usize);
+            write_bytes(self.a_plus_x.as_mut_ptr(), 0, (self.w * self.h) as usize);
+            write_bytes(self.a_plus_y.as_mut_ptr(), 0, (self.w * self.h) as usize);
         }
 
-        for y in 0..self._h {
-            for x in 0..self._w {
-                let idx = (y * self._w + x) as usize;
+        for y in 0..self.h {
+            for x in 0..self.w {
+                let idx = (y * self.w + x) as usize;
 
-                if (cell[idx] != CELL_FLUID) {
+                if cell[idx] != CELL_FLUID {
                     continue;
                 }
 
-                if (x < self._w - 1 && cell[idx + 1] == CELL_FLUID) {
-                    let factor = scale * self._u.volume(x + 1, y)
-                        / self._uDensity[self._u.idx(x + 1, y) as usize];
-                    self._aDiag[idx] += factor;
-                    self._aDiag[idx + 1] += factor;
-                    self._aPlusX[idx] = -factor;
+                if x < self.w - 1 && cell[idx + 1] == CELL_FLUID {
+                    let factor = scale * self.u.volume(x + 1, y)
+                        / self.u_density[self.u.idx(x + 1, y) as usize];
+                    self.a_diag[idx] += factor;
+                    self.a_diag[idx + 1] += factor;
+                    self.a_plus_x[idx] = -factor;
                 }
-                if (y < self._h - 1 && cell[idx + self._w as usize] == CELL_FLUID) {
-                    let factor = scale * self._v.volume(x, y + 1)
-                        / self._vDensity[self._u.idx(x, y + 1) as usize];
-                    self._aDiag[idx] += factor;
-                    self._aDiag[idx + self._w as usize] += factor;
-                    self._aPlusY[idx] = -factor;
+                if y < self.h - 1 && cell[idx + self.w as usize] == CELL_FLUID {
+                    let factor = scale * self.v.volume(x, y + 1)
+                        / self.v_density[self.u.idx(x, y + 1) as usize];
+                    self.a_diag[idx] += factor;
+                    self.a_diag[idx + self.w as usize] += factor;
+                    self.a_plus_y[idx] = -factor;
                 }
             }
         }
     }
 
-    fn buildHeatDiffusionMatrix(&mut self, timestep: f64) {
-        for i in 0..self._w * self._h {
-            self._aDiag[i as usize] = 1.0;
+    fn build_heat_diffusion_matrix(&mut self, timestep: f64) {
+        for i in 0..self.w * self.h {
+            self.a_diag[i as usize] = 1.0;
         }
 
         unsafe {
-            write_bytes(self._aPlusX.as_mut_ptr(), 0, (self._w * self._h) as usize);
-            write_bytes(self._aPlusY.as_mut_ptr(), 0, (self._w * self._h) as usize);
+            write_bytes(self.a_plus_x.as_mut_ptr(), 0, (self.w * self.h) as usize);
+            write_bytes(self.a_plus_y.as_mut_ptr(), 0, (self.w * self.h) as usize);
         }
 
-        let cell = self._d.cell();
-        let scale = self._diffusion * timestep * 1.0 / (self._hx * self._hx);
+        let cell = self.d.cell();
+        let scale = self.diffusion * timestep * 1.0 / (self.hx * self.hx);
 
-        for y in 0..self._h {
-            for x in 0..self._w {
-                let idx = (y * self._w + x) as usize;
+        for y in 0..self.h {
+            for x in 0..self.w {
+                let idx = (y * self.w + x) as usize;
 
-                if (cell[idx] != CELL_FLUID) {
+                if cell[idx] != CELL_FLUID {
                     continue;
                 }
-                if (x < self._w - 1 && cell[idx + 1] == CELL_FLUID) {
-                    self._aDiag[idx] += scale;
-                    self._aDiag[idx + 1] += scale;
-                    self._aPlusX[idx] = -scale;
+                if x < self.w - 1 && cell[idx + 1] == CELL_FLUID {
+                    self.a_diag[idx] += scale;
+                    self.a_diag[idx + 1] += scale;
+                    self.a_plus_x[idx] = -scale;
                 }
-                if (y < self._h - 1 && cell[idx + self._w as usize] == CELL_FLUID) {
-                    self._aDiag[idx] += scale;
-                    self._aDiag[idx + self._w as usize] += scale;
-                    self._aPlusY[idx] = -scale;
+                if y < self.h - 1 && cell[idx + self.w as usize] == CELL_FLUID {
+                    self.a_diag[idx] += scale;
+                    self.a_diag[idx + self.w as usize] += scale;
+                    self.a_plus_y[idx] = -scale;
                 }
             }
         }
     }
 
-    fn buildPreconditioner(&mut self) {
-        const tau: f64 = 0.97;
-        const sigma: f64 = 0.25;
+    fn build_preconditioner(&mut self) {
+        const TAU: f64 = 0.97;
+        const SIGMA: f64 = 0.25;
 
-        let cell = self._d.cell();
-        for y in 0..self._h {
-            for x in 0..self._w {
-                let idx = (y * self._w + x) as usize;
+        let cell = self.d.cell();
+        for y in 0..self.h {
+            for x in 0..self.w {
+                let idx = (y * self.w + x) as usize;
 
-                if (cell[idx] != CELL_FLUID) {
+                if cell[idx] != CELL_FLUID {
                     continue;
                 }
 
-                let mut e = self._aDiag[idx];
+                let mut e = self.a_diag[idx];
 
-                if (x > 0 && cell[idx - 1] == CELL_FLUID) {
-                    let px = self._aPlusX[idx - 1] * self._precon[idx - 1];
-                    let py = self._aPlusY[idx - 1] * self._precon[idx - 1];
-                    e = e - (px * px + tau * px * py);
+                if x > 0 && cell[idx - 1] == CELL_FLUID {
+                    let px = self.a_plus_x[idx - 1] * self.precon[idx - 1];
+                    let py = self.a_plus_y[idx - 1] * self.precon[idx - 1];
+                    e = e - (px * px + TAU * px * py);
                 }
-                if (y > 0 && cell[idx - self._w as usize] == CELL_FLUID) {
+                if y > 0 && cell[idx - self.w as usize] == CELL_FLUID {
                     let px =
-                        self._aPlusX[idx - self._w as usize] * self._precon[idx - self._w as usize];
+                        self.a_plus_x[idx - self.w as usize] * self.precon[idx - self.w as usize];
                     let py =
-                        self._aPlusY[idx - self._w as usize] * self._precon[idx - self._w as usize];
-                    e = e - (py * py + tau * px * py);
+                        self.a_plus_y[idx - self.w as usize] * self.precon[idx - self.w as usize];
+                    e = e - (py * py + TAU * px * py);
                 }
 
-                if (e < sigma * self._aDiag[idx]) {
-                    e = self._aDiag[idx];
+                if e < SIGMA * self.a_diag[idx] {
+                    e = self.a_diag[idx];
                 }
 
-                self._precon[idx] = 1.0 / f64::sqrt(e);
+                self.precon[idx] = 1.0 / f64::sqrt(e);
             }
         }
     }
 
-    fn applyPreconditioner(&self, dst: &mut Vec<f64>, a: &Vec<f64>) {
-        let cell = self._d.cell();
+    fn apply_preconditioner(&self, dst: &mut Vec<f64>, a: &Vec<f64>) {
+        let cell = self.d.cell();
 
-        for y in 0..self._h {
-            for x in 0..self._w {
-                let idx = (y * self._w + x) as usize;
+        for y in 0..self.h {
+            for x in 0..self.w {
+                let idx = (y * self.w + x) as usize;
 
-                if (cell[idx] != CELL_FLUID) {
+                if cell[idx] != CELL_FLUID {
                     continue;
                 }
 
                 let mut t = a[idx];
 
-                if (x > 0 && cell[idx - 1] == CELL_FLUID) {
-                    t -= self._aPlusX[idx - 1] * self._precon[idx - 1] * dst[idx - 1];
+                if x > 0 && cell[idx - 1] == CELL_FLUID {
+                    t -= self.a_plus_x[idx - 1] * self.precon[idx - 1] * dst[idx - 1];
                 }
-                if (y > 0 && cell[idx - self._w as usize] == CELL_FLUID) {
-                    t -= self._aPlusY[idx - self._w as usize]
-                        * self._precon[idx - self._w as usize]
-                        * dst[idx - self._w as usize];
+                if y > 0 && cell[idx - self.w as usize] == CELL_FLUID {
+                    t -= self.a_plus_y[idx - self.w as usize]
+                        * self.precon[idx - self.w as usize]
+                        * dst[idx - self.w as usize];
                 }
 
-                dst[idx] = t * self._precon[idx];
+                dst[idx] = t * self.precon[idx];
             }
         }
 
         // TODO: Might bug
-        for y in self._h - 1..=0 {
-            for x in self._w - 1..=0 {
-                let idx = (y * self._w + x) as usize;
+        for y in self.h - 1..=0 {
+            for x in self.w - 1..=0 {
+                let idx = (y * self.w + x) as usize;
 
-                if (cell[idx] != CELL_FLUID) {
+                if cell[idx] != CELL_FLUID {
                     continue;
                 }
 
                 let mut t = dst[idx];
 
-                if (x < self._w - 1 && cell[idx + 1] == CELL_FLUID) {
-                    t -= self._aPlusX[idx] * self._precon[idx] * dst[idx + 1];
+                if x < self.w - 1 && cell[idx + 1] == CELL_FLUID {
+                    t -= self.a_plus_x[idx] * self.precon[idx] * dst[idx + 1];
                 }
-                if (y < self._h - 1 && cell[idx + self._w as usize] == CELL_FLUID) {
-                    t -= self._aPlusY[idx] * self._precon[idx] * dst[idx + self._w as usize];
+                if y < self.h - 1 && cell[idx + self.w as usize] == CELL_FLUID {
+                    t -= self.a_plus_y[idx] * self.precon[idx] * dst[idx + self.w as usize];
                 }
 
-                dst[idx] = t * self._precon[idx];
+                dst[idx] = t * self.precon[idx];
             }
         }
     }
 
-    fn dotProduct(&self, a: &Vec<f64>, b: &Vec<f64>) -> f64 {
-        let cell = self._d.cell();
+    fn dot_product(&self, a: &Vec<f64>, b: &Vec<f64>) -> f64 {
+        let cell = self.d.cell();
         let mut result = 0.0;
 
-        for i in 0..(self._w * self._h) as usize {
-            if (cell[i] == CELL_FLUID) {
+        for i in 0..(self.w * self.h) as usize {
+            if cell[i] == CELL_FLUID {
                 result += a[i] * b[i];
             }
         }
@@ -935,22 +930,22 @@ impl FluidSolver {
         result
     }
 
-    fn matrixVectorProduct(&self, dst: &mut Vec<f64>, b: &Vec<f64>) {
-        for y in 0..self._h {
-            for x in 0..self._w {
-                let idx = (y * self._w + x) as usize;
-                let mut t = self._aDiag[idx] * b[idx];
-                if (x > 0) {
-                    t += self._aPlusX[idx - 1] * b[idx - 1];
+    fn matrix_vector_product(&self, dst: &mut Vec<f64>, b: &Vec<f64>) {
+        for y in 0..self.h {
+            for x in 0..self.w {
+                let idx = (y * self.w + x) as usize;
+                let mut t = self.a_diag[idx] * b[idx];
+                if x > 0 {
+                    t += self.a_plus_x[idx - 1] * b[idx - 1];
                 }
-                if (y > 0) {
-                    t += self._aPlusY[idx - self._w as usize] * b[idx - self._w as usize];
+                if y > 0 {
+                    t += self.a_plus_y[idx - self.w as usize] * b[idx - self.w as usize];
                 }
-                if (x < self._w - 1) {
-                    t += self._aPlusX[idx] * b[idx + 1];
+                if x < self.w - 1 {
+                    t += self.a_plus_x[idx] * b[idx + 1];
                 }
-                if (y < self._h - 1) {
-                    t += self._aPlusY[idx] * b[idx + self._w as usize];
+                if y < self.h - 1 {
+                    t += self.a_plus_y[idx] * b[idx + self.w as usize];
                 }
 
                 dst[idx] = t;
@@ -958,298 +953,298 @@ impl FluidSolver {
         }
     }
 
-    fn scaledAdd(&self, dst: &mut Vec<f64>, a: &Vec<f64>, b: &Vec<f64>, s: f64) {
-        let cell = self._d.cell();
-        for i in 0..(self._w * self._h) as usize {
-            if (cell[i] == CELL_FLUID) {
+    fn scaled_add(&self, dst: &mut Vec<f64>, a: &Vec<f64>, b: &Vec<f64>, s: f64) {
+        let cell = self.d.cell();
+        for i in 0..(self.w * self.h) as usize {
+            if cell[i] == CELL_FLUID {
                 dst[i] = a[i] + b[i] * s;
             }
         }
     }
 
-    fn scaledAddInPlaceA(&self, dst: &mut Vec<f64>, b: &Vec<f64>, s: f64) {
-        let cell = self._d.cell();
-        for i in 0..(self._w * self._h) as usize {
-            if (cell[i] == CELL_FLUID) {
+    fn scaled_add_in_place_a(&self, dst: &mut Vec<f64>, b: &Vec<f64>, s: f64) {
+        let cell = self.d.cell();
+        for i in 0..(self.w * self.h) as usize {
+            if cell[i] == CELL_FLUID {
                 dst[i] = dst[i] + b[i] * s;
             }
         }
     }
 
-    fn scaledAddInPlaceB(&self, dst: &mut Vec<f64>, a: &Vec<f64>, s: f64) {
-        let cell = self._d.cell();
-        for i in 0..(self._w * self._h) as usize {
-            if (cell[i] == CELL_FLUID) {
+    fn scaled_add_in_place_b(&self, dst: &mut Vec<f64>, a: &Vec<f64>, s: f64) {
+        let cell = self.d.cell();
+        for i in 0..(self.w * self.h) as usize {
+            if cell[i] == CELL_FLUID {
                 dst[i] = a[i] + dst[i] * s;
             }
         }
     }
 
-    fn infinityNorm(&self, a: &Vec<f64>) -> f64 {
-        let cell = self._d.cell();
-        let mut maxA = 0.0;
+    fn infinity_norm(&self, a: &Vec<f64>) -> f64 {
+        let cell = self.d.cell();
+        let mut max_a = 0.0;
 
-        for i in 0..(self._w * self._h) as usize {
-            if (cell[i] == CELL_FLUID) {
-                maxA = f64::max(maxA, f64::abs(a[i]));
+        for i in 0..(self.w * self.h) as usize {
+            if cell[i] == CELL_FLUID {
+                max_a = f64::max(max_a, f64::abs(a[i]));
             }
         }
 
-        maxA
+        max_a
     }
 
     fn project(&mut self, limit: usize) {
         unsafe {
-            write_bytes(self._p.as_mut_ptr(), 0, (self._w * self._h) as usize);
+            write_bytes(self.p.as_mut_ptr(), 0, (self.w * self.h) as usize);
         }
 
-        let mut z = &mut self._z.clone();
-        let mut p = &mut self._p.clone();
-        let mut r = &mut self._r.clone();
-        let mut s = &mut self._s.clone();
+        let mut z = &mut self.z.clone();
+        let mut p = &mut self.p.clone();
+        let mut r = &mut self.r.clone();
+        let mut s = &mut self.s.clone();
 
-        self.applyPreconditioner(&mut z, r);
+        self.apply_preconditioner(&mut z, r);
 
         unsafe {
-            copy_nonoverlapping(z.as_mut_ptr(), s.as_mut_ptr(), (self._w * self._h) as usize);
+            copy_nonoverlapping(z.as_mut_ptr(), s.as_mut_ptr(), (self.w * self.h) as usize);
         }
 
-        let mut maxError = self.infinityNorm(r);
+        let mut max_error = self.infinity_norm(r);
 
-        if (maxError < 1e-5) {
+        if max_error < 1e-5 {
             println!("Initial guess sufficiently small");
-            self._z = z.clone();
-            self._p = p.clone();
-            self._r = r.clone();
-            self._s = s.clone();
+            self.z = z.clone();
+            self.p = p.clone();
+            self.r = r.clone();
+            self.s = s.clone();
             return;
         }
 
-        let mut sigma = self.dotProduct(z, r);
+        let mut sigma = self.dot_product(z, r);
 
         for iter in 0..limit {
-            self.matrixVectorProduct(&mut z, s);
-            let alpha = sigma / self.dotProduct(z, s);
+            self.matrix_vector_product(&mut z, s);
+            let alpha = sigma / self.dot_product(z, s);
 
-            self.scaledAddInPlaceA(&mut p, s, alpha);
-            self.scaledAddInPlaceA(&mut r, z, -alpha);
+            self.scaled_add_in_place_a(&mut p, s, alpha);
+            self.scaled_add_in_place_a(&mut r, z, -alpha);
 
-            maxError = self.infinityNorm(r);
+            max_error = self.infinity_norm(r);
 
-            if (maxError < 1e-5) {
+            if max_error < 1e-5 {
                 println!(
                     "Exiting solver after {} iterations, maximum error is {}",
-                    iter, maxError
+                    iter, max_error
                 );
-                self._z = z.clone();
-                self._p = p.clone();
-                self._r = r.clone();
-                self._s = s.clone();
+                self.z = z.clone();
+                self.p = p.clone();
+                self.r = r.clone();
+                self.s = s.clone();
                 return;
             }
 
-            self.applyPreconditioner(&mut z, r);
-            let sigmaNew = self.dotProduct(z, r);
-            self.scaledAddInPlaceB(&mut s, z, sigmaNew / sigma);
-            sigma = sigmaNew;
+            self.apply_preconditioner(&mut z, r);
+            let sigma_new = self.dot_product(z, r);
+            self.scaled_add_in_place_b(&mut s, z, sigma_new / sigma);
+            sigma = sigma_new;
         }
 
-        self._z = z.clone();
-        self._p = p.clone();
-        self._r = r.clone();
-        self._s = s.clone();
+        self.z = z.clone();
+        self.p = p.clone();
+        self.r = r.clone();
+        self.s = s.clone();
         println!(
             "Exceeded budget of {} iterations, maximum error was {}",
-            limit, maxError
+            limit, max_error
         );
     }
 
     /* Similar to the pressure matrix, we cannot assume constant density per
      * cell here either and must modify the equations accordingly.
      */
-    fn applyPressure(&mut self, timestep: f64) {
-        let scale = timestep / self._hx;
-        let cell = self._d.cell();
+    fn apply_pressure(&mut self, timestep: f64) {
+        let scale = timestep / self.hx;
+        let cell = self.d.cell();
 
-        for y in 0..self._h {
-            for x in 0..self._w {
-                let idx = (y * self._w + x) as usize;
-                if (cell[idx] != CELL_FLUID) {
+        for y in 0..self.h {
+            for x in 0..self.w {
+                let idx = (y * self.w + x) as usize;
+                if cell[idx] != CELL_FLUID {
                     continue;
                 }
-                *self._u.at_mut(x, y) -=
-                    scale * self._p[idx] / self._uDensity[self._u.idx(x, y) as usize];
-                *self._v.at_mut(x, y) -=
-                    scale * self._p[idx] / self._vDensity[self._v.idx(x, y) as usize];
-                *self._u.at_mut(x + 1, y) +=
-                    scale * self._p[idx] / self._uDensity[self._u.idx(x + 1, y) as usize];
-                *self._v.at_mut(x, y + 1) +=
-                    scale * self._p[idx] / self._vDensity[self._v.idx(x, y + 1) as usize];
+                *self.u.at_mut(x, y) -=
+                    scale * self.p[idx] / self.u_density[self.u.idx(x, y) as usize];
+                *self.v.at_mut(x, y) -=
+                    scale * self.p[idx] / self.v_density[self.v.idx(x, y) as usize];
+                *self.u.at_mut(x + 1, y) +=
+                    scale * self.p[idx] / self.u_density[self.u.idx(x + 1, y) as usize];
+                *self.v.at_mut(x, y + 1) +=
+                    scale * self.p[idx] / self.v_density[self.v.idx(x, y + 1) as usize];
             }
         }
     }
 
-    fn addBuoyancy(&mut self, timestep: f64) {
-        let alpha = (self._densitySoot - self._densityAir) / self._densityAir;
+    fn add_buoyancy(&mut self, timestep: f64) {
+        let alpha = (self.density_soot - self.density_air) / self.density_air;
 
-        for y in 0..self._h {
-            for x in 0..self._w {
+        for y in 0..self.h {
+            for x in 0..self.w {
                 let buoyancy = timestep
-                    * self._g
-                    * (alpha * self._d.at(x, y) - (self._t.at(x, y) - self._tAmb) / self._tAmb);
+                    * self.g
+                    * (alpha * self.d.at(x, y) - (self.t.at(x, y) - self.t_amb) / self.t_amb);
 
-                *self._v.at_mut(x, y) += buoyancy * 0.5;
-                *self._v.at_mut(x, y + 1) += buoyancy * 0.5;
+                *self.v.at_mut(x, y) += buoyancy * 0.5;
+                *self.v.at_mut(x, y + 1) += buoyancy * 0.5;
             }
         }
     }
 
-    fn setBoundaryCondition(&mut self) {
-        let cell = self._d.cell();
-        let body = self._d.body();
+    fn set_boundary_condition(&mut self) {
+        let cell = self.d.cell();
+        let body = self.d.body();
 
-        for y in 0..self._h {
-            for x in 0..self._w {
-                let idx = (y * self._w + x) as usize;
-                if (cell[idx] == CELL_SOLID) {
-                    let b = &self._bodies[body[idx] as usize];
-                    *self._u.at_mut(x, y) =
-                        b.velocityX(x as f64 * self._hx, (y as f64 + 0.5) * self._hx);
-                    *self._v.at_mut(x, y) =
-                        b.velocityY((x as f64 + 0.5) * self._hx, y as f64 * self._hx);
-                    *self._u.at_mut(x + 1, y) =
-                        b.velocityX((x as f64 + 1.0) * self._hx, (y as f64 + 0.5) * self._hx);
-                    *self._v.at_mut(x, y + 1) =
-                        b.velocityY((x as f64 + 0.5) * self._hx, (y as f64 + 1.0) * self._hx);
+        for y in 0..self.h {
+            for x in 0..self.w {
+                let idx = (y * self.w + x) as usize;
+                if cell[idx] == CELL_SOLID {
+                    let b = &self.bodies[body[idx] as usize];
+                    *self.u.at_mut(x, y) =
+                        b.velocity_x(x as f64 * self.hx, (y as f64 + 0.5) * self.hx);
+                    *self.v.at_mut(x, y) =
+                        b.velocity_y((x as f64 + 0.5) * self.hx, y as f64 * self.hx);
+                    *self.u.at_mut(x + 1, y) =
+                        b.velocity_x((x as f64 + 1.0) * self.hx, (y as f64 + 0.5) * self.hx);
+                    *self.v.at_mut(x, y + 1) =
+                        b.velocity_y((x as f64 + 0.5) * self.hx, (y as f64 + 1.0) * self.hx);
                 }
             }
         }
-        for y in 0..self._h {
-            *self._u.at_mut(0, y) = 0.0;
-            *self._u.at_mut(self._w, y) = 0.0;
+        for y in 0..self.h {
+            *self.u.at_mut(0, y) = 0.0;
+            *self.u.at_mut(self.w, y) = 0.0;
         }
-        for x in 0..self._w {
-            *self._v.at_mut(x, 0) = 0.0;
-            *self._v.at_mut(x, self._h) = 0.0;
+        for x in 0..self.w {
+            *self.v.at_mut(x, 0) = 0.0;
+            *self.v.at_mut(x, self.h) = 0.0;
         }
     }
 
     fn new(
         w: usize,
         h: usize,
-        rhoAir: f64,
-        rhoSoot: f64,
+        rho_air: f64,
+        rho_soot: f64,
         diffusion: f64,
-        bodies: Vec<Box<SolidBody>>,
+        bodies: Vec<Box<dyn SolidBody>>,
     ) -> Self {
-        let _hx = 1.0 / usize::min(w, h) as f64;
+        let hx = 1.0 / usize::min(w, h) as f64;
         let mut ret = Self {
-            _w: w as u32,
-            _h: h as u32,
-            _densityAir: rhoAir,
-            _densitySoot: rhoSoot,
-            _diffusion: diffusion,
-            _bodies: bodies,
-            _tAmb: 294.0,
-            _g: 9.81,
-            _hx,
-            _d: FluidQuantity::new(w as u32, h as u32, 0.5, 0.5, _hx),
-            _t: FluidQuantity::new(w as u32, h as u32, 0.5, 0.5, _hx),
-            _u: FluidQuantity::new(w as u32 + 1, h as u32, 0.0, 0.5, _hx),
-            _v: FluidQuantity::new(w as u32, h as u32 + 1, 0.5, 0.0, _hx),
-            _r: vec![0f64; w * h],
-            _p: vec![0f64; w * h],
-            _z: vec![0f64; w * h],
-            _s: vec![0f64; w * h],
-            _aDiag: vec![0f64; w * h],
-            _aPlusX: vec![0f64; w * h],
-            _aPlusY: vec![0f64; w * h],
-            _precon: vec![0f64; w * h],
-            _uDensity: vec![0f64; (w + 1) * h],
-            _vDensity: vec![0f64; w * (h + 1)],
+            w: w as u32,
+            h: h as u32,
+            density_air: rho_air,
+            density_soot: rho_soot,
+            diffusion: diffusion,
+            bodies: bodies,
+            t_amb: 294.0,
+            g: 9.81,
+            hx,
+            d: FluidQuantity::new(w as u32, h as u32, 0.5, 0.5, hx),
+            t: FluidQuantity::new(w as u32, h as u32, 0.5, 0.5, hx),
+            u: FluidQuantity::new(w as u32 + 1, h as u32, 0.0, 0.5, hx),
+            v: FluidQuantity::new(w as u32, h as u32 + 1, 0.5, 0.0, hx),
+            r: vec![0f64; w * h],
+            p: vec![0f64; w * h],
+            z: vec![0f64; w * h],
+            s: vec![0f64; w * h],
+            a_diag: vec![0f64; w * h],
+            a_plus_x: vec![0f64; w * h],
+            a_plus_y: vec![0f64; w * h],
+            precon: vec![0f64; w * h],
+            u_density: vec![0f64; (w + 1) * h],
+            v_density: vec![0f64; w * (h + 1)],
         };
 
         for i in 0..w * h {
-            ret._t.src_mut()[i] = ret._tAmb;
+            ret.t.src_mut()[i] = ret.t_amb;
         }
 
         ret
     }
 
     fn update(&mut self, timestep: f64) {
-        self._d.fillSolidFields(&self._bodies);
-        self._t.fillSolidFields(&self._bodies);
-        self._u.fillSolidFields(&self._bodies);
-        self._v.fillSolidFields(&self._bodies);
+        self.d.fill_solid_fields(&self.bodies);
+        self.t.fill_solid_fields(&self.bodies);
+        self.u.fill_solid_fields(&self.bodies);
+        self.v.fill_solid_fields(&self.bodies);
         unsafe {
             copy_nonoverlapping(
-                self._t.src_mut().as_mut_ptr(),
-                self._r.as_mut_ptr(),
-                (self._w * self._h) as usize,
+                self.t.src_mut().as_mut_ptr(),
+                self.r.as_mut_ptr(),
+                (self.w * self.h) as usize,
             );
         }
-        self.buildHeatDiffusionMatrix(timestep);
-        self.buildPreconditioner();
+        self.build_heat_diffusion_matrix(timestep);
+        self.build_preconditioner();
         self.project(2000);
         unsafe {
             copy_nonoverlapping(
-                self._p.as_mut_ptr(),
-                self._t.src_mut().as_mut_ptr(),
-                (self._w * self._h) as usize,
+                self.p.as_mut_ptr(),
+                self.t.src_mut().as_mut_ptr(),
+                (self.w * self.h) as usize,
             );
         }
-        self._t.extrapolate();
-        self.addBuoyancy(timestep);
-        self.setBoundaryCondition();
-        self.buildRhs();
-        self.computeDensities();
-        self.buildPressureMatrix(timestep);
-        self.buildPreconditioner();
+        self.t.extrapolate();
+        self.add_buoyancy(timestep);
+        self.set_boundary_condition();
+        self.build_rhs();
+        self.compute_densities();
+        self.build_pressure_matrix(timestep);
+        self.build_preconditioner();
         self.project(2000);
-        self.applyPressure(timestep);
-        self._d.extrapolate();
-        self._u.extrapolate();
-        self._v.extrapolate();
-        self.setBoundaryCondition();
-        self._d.advect(timestep, &self._u, &self._v, &self._bodies);
-        self._t.advect(timestep, &self._u, &self._v, &self._bodies);
-        self._u
-            .advect(timestep, &self._u.clone(), &self._v, &self._bodies);
-        self._v
-            .advect(timestep, &self._u, &self._v.clone(), &self._bodies);
-        self._d.flip();
-        self._t.flip();
-        self._u.flip();
-        self._v.flip();
+        self.apply_pressure(timestep);
+        self.d.extrapolate();
+        self.u.extrapolate();
+        self.v.extrapolate();
+        self.set_boundary_condition();
+        self.d.advect(timestep, &self.u, &self.v, &self.bodies);
+        self.t.advect(timestep, &self.u, &self.v, &self.bodies);
+        self.u
+            .advect(timestep, &self.u.clone(), &self.v, &self.bodies);
+        self.v
+            .advect(timestep, &self.u, &self.v.clone(), &self.bodies);
+        self.d.flip();
+        self.t.flip();
+        self.u.flip();
+        self.v.flip();
     }
 
-    fn addInflow(&mut self, x: f64, y: f64, w: f64, h: f64, d: f64, t: f64, u: f64, v: f64) {
-        self._d.addInflow(x, y, x + w, y + h, d);
-        self._t.addInflow(x, y, x + w, y + h, t);
-        self._u.addInflow(x, y, x + w, y + h, u);
-        self._v.addInflow(x, y, x + w, y + h, v);
+    fn add_inflow(&mut self, x: f64, y: f64, w: f64, h: f64, d: f64, t: f64, u: f64, v: f64) {
+        self.d.add_inflow(x, y, x + w, y + h, d);
+        self.t.add_inflow(x, y, x + w, y + h, t);
+        self.u.add_inflow(x, y, x + w, y + h, u);
+        self.v.add_inflow(x, y, x + w, y + h, v);
     }
 
-    fn ambientT(&self) -> f64 {
-        self._tAmb
+    fn ambient_t(&self) -> f64 {
+        self.t_amb
     }
 
-    fn toImage(&self, renderHeat: bool) -> Vec<u8> {
-        let mut rgba = vec![0u8; (self._h * if renderHeat { 2 } else { 1 } * self._w * 4) as usize];
+    fn to_image(&self, render_heat: bool) -> Vec<u8> {
+        let mut rgba = vec![0u8; (self.h * if render_heat { 2 } else { 1 } * self.w * 4) as usize];
 
-        for y in 0..self._h {
-            for x in 0..self._w {
-                let (idxl, idxr) = if (renderHeat) {
+        for y in 0..self.h {
+            for x in 0..self.w {
+                let (idxl, idxr) = if render_heat {
                     (
-                        4 * (x + y * self._w * 2) as usize,
-                        4 * (x + y * self._w * 2 + self._w) as usize,
+                        4 * (x + y * self.w * 2) as usize,
+                        4 * (x + y * self.w * 2 + self.w) as usize,
                     )
                 } else {
-                    (0, 4 * (x + y * self._w) as usize)
+                    (0, 4 * (x + y * self.w) as usize)
                 };
 
-                let volume = self._d.volume(x, y);
-                let mut shade = (1.0 - self._d.at(x, y)) * volume;
+                let volume = self.d.volume(x, y);
+                let mut shade = (1.0 - self.d.at(x, y)) * volume;
 
                 shade = f64::min(f64::max(shade, 0.0), 1.0);
 
@@ -1258,8 +1253,8 @@ impl FluidSolver {
                 rgba[idxr + 2] = (shade * 255.0) as u8;
                 rgba[idxr + 3] = 0xFF;
 
-                if (renderHeat) {
-                    let mut t = (self._t.at(x, y) - self._tAmb) / 700.0;
+                if render_heat {
+                    let mut t = (self.t.at(x, y) - self.t_amb) / 700.0;
                     t = f64::min(f64::max(t, 0.0), 1.0);
                     let r = 1.0 + volume * (f64::min(t * 4.0, 1.0) - 1.0);
                     let g = 1.0 + volume * (f64::min(t * 2.0, 1.0) - 1.0);
@@ -1278,15 +1273,15 @@ impl FluidSolver {
 
 fn main() {
     /* Play with these constants, if you want */
-    let sizeX = 256;
-    let sizeY = 256;
-    let densityAir = 0.1;
-    let densitySoot = 1.0; /* You can make this smaller to get lighter smoke */
+    let size_x = 256;
+    let size_y = 256;
+    let density_air = 0.1;
+    let density_soot = 1.0; /* You can make this smaller to get lighter smoke */
     let diffusion = 0.03;
     let timestep = 0.005;
-    let renderHeat = true; /* Set this to true to enable heat rendering */
+    let render_heat = true; /* Set this to true to enable heat rendering */
 
-    let mut bodies: Vec<Box<SolidBody>> = Vec::new();
+    let mut bodies: Vec<Box<dyn SolidBody>> = Vec::new();
 
     bodies.push(Box::new(SolidBox::new(SolidBodyFields::new(
         0.5,
@@ -1299,40 +1294,40 @@ fn main() {
         0.1,
     ))));
 
-    let mut solver = FluidSolver::new(sizeX, sizeY, densityAir, densitySoot, diffusion, bodies);
+    let mut solver = FluidSolver::new(size_x, size_y, density_air, density_soot, diffusion, bodies);
     let mut time = 0.0;
     let mut iterations = 0;
 
-    while (time < 8.0) {
-        for i in 0..4 {
-            solver.addInflow(
+    while time < 8.0 {
+        for _i in 0..4 {
+            solver.add_inflow(
                 0.45,
                 0.2,
                 0.1,
                 0.05,
                 1.0,
-                650.0 + solver.ambientT(),
+                650.0 + solver.ambient_t(),
                 0.0,
                 0.0,
             );
             solver.update(timestep);
             time += timestep;
         }
-        let image = solver.toImage(renderHeat);
+        let image = solver.to_image(render_heat);
         let path = format!("frame{:0>5}.png", iterations);
 
         iterations += 1;
 
         screenshot(
             &path,
-            if renderHeat { sizeX * 2 } else { sizeX } as u32,
-            sizeY as u32,
+            if render_heat { size_x * 2 } else { size_x } as u32,
+            size_y as u32,
             image,
         );
-        // lodepng_encode32_file(path, image, (renderHeat ? sizeX*2 : sizeX), sizeY);
+        // lodepng_encode32_file(path, image, (render_heat ? size_x*2 : size_x), size_y);
 
-        for i in 0..solver._bodies.len() {
-            solver._bodies[i].update(timestep);
+        for i in 0..solver.bodies.len() {
+            solver.bodies[i].update(timestep);
         }
     }
 }
