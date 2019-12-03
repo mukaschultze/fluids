@@ -36,7 +36,7 @@ fn occupancy(d11: f64, d12: f64, d21: f64, d22: f64) -> f64 {
     let ds = [d11, d12, d22, d21];
     let mut b = 0u8;
 
-    for i in 3..=0 {
+    for i in (0..4).rev() {
         b = (b << 1) | (if ds[i] < 0.0 { 1 } else { 0 });
     }
 
@@ -259,7 +259,7 @@ impl SolidBody for SolidSphere {
         x -= self.get_fields().pos_x;
         y -= self.get_fields().pos_y;
         let r = length(x, y);
-        if r < 1e-4f64 {
+        if r < 1e-4 {
             *nx = 1.0;
             *ny = 0.0;
         } else {
@@ -378,15 +378,15 @@ impl FluidQuantity {
     }
 
     fn at(&self, x: usize, y: usize) -> f64 {
-        self.src[(x + y * self.w)]
+        self.src[x + y * self.w]
     }
 
     fn at_mut(&mut self, x: usize, y: usize) -> &mut f64 {
-        &mut self.src[(x + y * self.w)]
+        &mut self.src[x + y * self.w]
     }
 
     fn volume(&self, x: usize, y: usize) -> f64 {
-        self.volume[(x + y * self.w)]
+        self.volume[x + y * self.w]
     }
 
     fn lerp(&self, mut x: f64, mut y: f64) -> f64 {
@@ -491,7 +491,7 @@ impl FluidQuantity {
         let iy0 = (y0 / self.hx - self.oy) as usize;
         let ix1 = (x1 / self.hx - self.ox) as usize;
         let iy1 = (y1 / self.hx - self.oy) as usize;
-        // TODO: Might bug
+
         for y in usize::max(iy0, 0)..usize::min(iy1, self.h) {
             for x in usize::max(ix0, 0)..usize::min(ix1, self.h) {
                 let l = length(
@@ -513,9 +513,9 @@ impl FluidQuantity {
             return;
         }
 
-        for iy in 0..self.h {
-            for ix in 0..self.w {
-                let idx = iy * self.w + ix;
+        for iy in 0..=self.h {
+            for ix in 0..=self.w {
+                let idx = iy * (self.w + 1) + ix;
                 let x = (ix as f64 + self.ox - 0.5) * self.hx;
                 let y = (iy as f64 + self.oy - 0.5) * self.hx;
                 self.phi[idx] = bodies[0].distance(x, y);
@@ -535,7 +535,7 @@ impl FluidQuantity {
 
                 let mut d = bodies[0].distance(x, y);
 
-                for i in 0..bodies.len() {
+                for i in 1..bodies.len() {
                     let id = bodies[i].distance(x, y);
                     if id < d {
                         self.body[idx] = i as u8;
@@ -622,7 +622,7 @@ impl FluidQuantity {
         let mut border = Vec::new();
 
         for y in 1..self.h - 1 {
-            for x in 1..self.w {
+            for x in 1..self.w - 1 {
                 let idx = x + y * self.w;
 
                 if self.cell[idx] != CELL_FLUID && self.mask[idx] == 0 {
@@ -636,16 +636,16 @@ impl FluidQuantity {
 
             self.src[idx] = self.extrapolate_normal(idx);
 
-            if self.normal_x[(idx - 1)] > 0.0 {
+            if self.normal_x[idx - 1] > 0.0 {
                 self.free_neighbour(idx - 1, &mut border, 1);
             }
-            if self.normal_x[(idx + 1)] < 0.0 {
+            if self.normal_x[idx + 1] < 0.0 {
                 self.free_neighbour(idx + 1, &mut border, 1);
             }
-            if self.normal_y[(idx - self.w)] > 0.0 {
+            if self.normal_y[idx - self.w] > 0.0 {
                 self.free_neighbour(idx - self.w, &mut border, 2);
             }
-            if self.normal_y[(idx + self.w)] < 0.0 {
+            if self.normal_y[idx + self.w] < 0.0 {
                 self.free_neighbour(idx + self.w, &mut border, 2);
             }
         }
@@ -885,9 +885,8 @@ impl FluidSolver {
             }
         }
 
-        // TODO: Might bug
-        for y in self.h - 1..=0 {
-            for x in self.w - 1..=0 {
+        for y in (0..self.h).rev() {
+            for x in (0..self.w).rev() {
                 let idx = y * self.w + x;
 
                 if cell[idx] != CELL_FLUID {
@@ -1132,8 +1131,8 @@ impl FluidSolver {
             h,
             density_air: rho_air,
             density_soot: rho_soot,
-            diffusion: diffusion,
-            bodies: bodies,
+            diffusion,
+            bodies,
             t_amb: 294.0,
             g: 9.81,
             hx,
@@ -1259,8 +1258,8 @@ impl FluidSolver {
 
 fn main() {
     /* Play with these constants, if you want */
-    let size_x = 64;
-    let size_y = 64;
+    let size_x = 128;
+    let size_y = 128;
     let density_air = 0.1;
     let density_soot = 1.0; /* You can make this smaller to get lighter smoke */
     let diffusion = 0.03;
@@ -1269,16 +1268,26 @@ fn main() {
 
     let mut bodies: Vec<Box<dyn SolidBody>> = Vec::new();
 
-    bodies.push(Box::new(SolidBox::new(SolidBodyFields::new(
-        0.5,
-        0.6,
-        0.9,
-        0.1,
-        f64::consts::PI * 0.25,
-        0.0,
-        0.0,
-        0.1,
-    ))));
+    // bodies.push(Box::new(SolidBox::new(SolidBodyFields::new(
+    //     0.5,
+    //     0.6,
+    //     0.7,
+    //     0.1,
+    //     f64::consts::PI * 0.25,
+    //     0.0,
+    //     0.0,
+    //     0.0,
+    // ))));
+    // bodies.push(Box::new(SolidSphere::new(SolidBodyFields::new(
+    //     0.9,
+    //     0.1,
+    //     0.2,
+    //     0.2,
+    //     f64::consts::PI * 0.25,
+    //     0.1,
+    //     0.0,
+    //     0.1,
+    // ))));
 
     let mut solver = FluidSolver::new(size_x, size_y, density_air, density_soot, diffusion, bodies);
     let mut time = 0.0;
